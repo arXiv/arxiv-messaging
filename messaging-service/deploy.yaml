@@ -1,0 +1,28 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: arxiv-messaging
+  annotations:
+    run.googleapis.com/ingress: private
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/minScale: "1"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 1
+      containers:
+      - image: gcr.io/YOUR_PROJECT_ID/arxiv-messaging:latest
+        env:
+        - name: GCP_PROJECT_ID
+          value: "YOUR_PROJECT_ID"
+        - name: PUBSUB_SUBSCRIPTION_NAME
+          value: "event-subscription"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+        ports:
+        - containerPort: 8080
