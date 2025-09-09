@@ -3,7 +3,8 @@ Tests for event aggregation methods
 """
 
 import pytest
-from src.message_server import EventAggregator, AggregationMethod
+from arxiv_messaging import AggregationMethod
+from src.message_server import EventAggregator
 
 
 class TestEventAggregation:

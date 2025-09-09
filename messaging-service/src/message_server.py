@@ -18,6 +18,7 @@ import os
 import structlog
 import httpx
 from .email_sender import send_email
+from arxiv_messaging import EventType, DeliveryMethod, AggregationFrequency, AggregationMethod, DeliveryErrorStrategy, Subscription, UserPreference, Event
 
 # Configure structured JSON logging
 structlog.configure(
@@ -46,58 +47,6 @@ logging.basicConfig(
 
 logger = structlog.get_logger(__name__)
 
-class DeliveryMethod(Enum):
-    EMAIL = "email"
-    SLACK = "slack"
-
-class AggregationFrequency(Enum):
-    IMMEDIATE = "immediate"
-    HOURLY = "hourly"
-    DAILY = "daily"
-    WEEKLY = "weekly"
-
-class AggregationMethod(Enum):
-    PLAIN = "plain"
-    MIME = "MIME" 
-    HTML = "HTML"
-
-class DeliveryErrorStrategy(Enum):
-    RETRY = "retry"      # Retry on delivery failure (guaranteed delivery)
-    IGNORE = "ignore"    # Ignore delivery failures (avoid spam/duplicates)
-
-class EventType(Enum):
-    NOTIFICATION = "NOTIFICATION"
-    ALERT = "ALERT"
-    WARNING = "WARNING"
-    INFO = "INFO"
-
-@dataclass
-class Subscription:
-    subscription_id: str  # Unique identifier for this subscription
-    user_id: str          # User who owns this subscription
-    delivery_method: DeliveryMethod
-    aggregation_frequency: AggregationFrequency
-    aggregation_method: AggregationMethod = AggregationMethod.PLAIN
-    delivery_error_strategy: DeliveryErrorStrategy = DeliveryErrorStrategy.RETRY
-    delivery_time: str = "09:00"  # Format: HH:MM
-    timezone: str = "UTC"
-    email_address: Optional[str] = None
-    slack_webhook_url: Optional[str] = None
-    enabled: bool = True  # Allow disabling subscriptions without deleting
-
-# Backward compatibility alias
-UserPreference = Subscription
-
-@dataclass
-class Event:
-    event_id: str
-    user_id: str
-    event_type: EventType
-    message: str
-    sender: str
-    subject: str
-    timestamp: datetime
-    metadata: Dict[str, Any]
 
 @dataclass
 class AggregatedEvent:

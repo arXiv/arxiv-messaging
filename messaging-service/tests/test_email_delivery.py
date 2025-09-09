@@ -4,7 +4,8 @@ Tests for email delivery functionality
 
 import pytest
 from unittest.mock import patch, MagicMock, ANY
-from src.message_server import EmailDeliveryProvider, UserPreference, DeliveryMethod, AggregationMethod, AggregationFrequency
+from arxiv_messaging import UserPreference, DeliveryMethod, AggregationMethod, AggregationFrequency
+from src.message_server import EmailDeliveryProvider
 from src.email_sender import send_email
 
 

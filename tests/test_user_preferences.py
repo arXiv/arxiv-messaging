@@ -3,7 +3,13 @@ Tests for user preferences and system initialization
 """
 
 import pytest
-from src.message_server import (
+import sys
+import os
+
+# Add the project root to the path so we can import modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from arxiv_messaging import (
     UserPreference, DeliveryMethod, AggregationFrequency, AggregationMethod
 )
 
@@ -95,31 +101,66 @@ class TestUserPreferences:
                 ]
 
 
-class TestSystemIntegration:
-    """Test system initialization with user preferences"""
+class TestLibraryComponents:
+    """Test library components and data structures"""
     
-    def test_system_add_user_preferences(self, event_aggregation_system, example_user_preferences):
-        """Test adding user preferences to the system"""
-        # Add all example preferences
-        for pref in example_user_preferences:
-            event_aggregation_system.add_user_preference(pref)
+    def test_subscription_creation_validation(self):
+        """Test subscription creation and validation"""
+        from arxiv_messaging import Subscription, DeliveryErrorStrategy
         
-        # Verify preferences were stored (mock verification)
-        assert event_aggregation_system.event_store is not None
+        # Test creating a subscription with all parameters
+        subscription = Subscription(
+            subscription_id="test-subscription",
+            user_id="test-user",
+            delivery_method=DeliveryMethod.EMAIL,
+            aggregation_frequency=AggregationFrequency.DAILY,
+            aggregation_method=AggregationMethod.HTML,
+            delivery_error_strategy=DeliveryErrorStrategy.RETRY,
+            delivery_time="10:00",
+            timezone="EST",
+            email_address="test@example.com",
+            enabled=True
+        )
+        
+        assert subscription.subscription_id == "test-subscription"
+        assert subscription.user_id == "test-user"
+        assert subscription.delivery_method == DeliveryMethod.EMAIL
+        assert subscription.aggregation_frequency == AggregationFrequency.DAILY
+        assert subscription.aggregation_method == AggregationMethod.HTML
+        assert subscription.delivery_error_strategy == DeliveryErrorStrategy.RETRY
+        assert subscription.delivery_time == "10:00"
+        assert subscription.timezone == "EST"
+        assert subscription.email_address == "test@example.com"
+        assert subscription.enabled is True
     
-    def test_system_initialization(self, mock_project_id, mock_subscription_name):
-        """Test system initialization without examples"""
-        from src.message_server import EventAggregationSystem
+    def test_event_creation(self):
+        """Test event creation and validation"""
+        from arxiv_messaging import Event
+        from datetime import datetime
         
-        from unittest.mock import patch
+        event = Event(
+            event_id="test-event-123",
+            user_id="test-user",
+            event_type=EventType.ALERT,
+            message="Test alert message",
+            sender="test@example.com",
+            subject="Test Alert",
+            timestamp=datetime.now(),
+            metadata={"source": "test", "priority": "high"}
+        )
         
-        with patch('src.message_server.EventStore'), \
-             patch('src.message_server.PubSubEventProcessor'), \
-             patch('src.message_server.ScheduledDeliveryService'):
-            
-            system = EventAggregationSystem(mock_project_id, mock_subscription_name)
-            
-            assert system.event_store is not None
-            assert system.delivery_service is not None
-            assert system.pubsub_processor is not None
-            assert system.scheduled_delivery is not None
+        assert event.event_id == "test-event-123"
+        assert event.user_id == "test-user"
+        assert event.event_type == EventType.ALERT
+        assert event.message == "Test alert message"
+        assert event.sender == "test@example.com"
+        assert event.subject == "Test Alert"
+        assert event.metadata["source"] == "test"
+        assert event.metadata["priority"] == "high"
+    
+    def test_event_type_enum_values(self):
+        """Test EventType enum values"""
+        assert EventType.NOTIFICATION.value == "NOTIFICATION"
+        assert EventType.ALERT.value == "ALERT"
+        assert EventType.WARNING.value == "WARNING"
+        assert EventType.INFO.value == "INFO"

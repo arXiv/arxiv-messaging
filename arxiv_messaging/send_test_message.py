@@ -7,9 +7,8 @@ import argparse
 import os
 import sys
 import structlog
-from send_notification import send_notification
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from src.message_server import EventType
+from . import send_notification
+from .event_type import EventType
 
 def setup_logging():
     """Configure structured logging"""

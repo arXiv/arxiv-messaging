@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 import structlog
-from firebase_loader import FirebaseLoader
+from .firebase_loader import FirebaseLoader
 
 def setup_logging():
     """Configure structured logging"""

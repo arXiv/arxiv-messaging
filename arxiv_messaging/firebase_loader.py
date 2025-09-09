@@ -8,10 +8,7 @@ from ruamel.yaml import YAML
 import structlog
 from firebase_admin import credentials, firestore, initialize_app
 import firebase_admin
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from src.message_server import UserPreference, Subscription, DeliveryMethod, AggregationFrequency, AggregationMethod, DeliveryErrorStrategy, EventType
+from .event_type import EventType, UserPreference, Subscription, DeliveryMethod, AggregationFrequency, AggregationMethod, DeliveryErrorStrategy
 
 logger = structlog.get_logger(__name__)
 

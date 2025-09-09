@@ -9,18 +9,15 @@ import requests
 from datetime import datetime
 from typing import Dict, Any, Optional, Union, List
 from google.cloud import pubsub_v1
-# from google.api_core import exceptions as gcp_exceptions
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+from .event_type import EventType
 
-# Import EventType from the main server module
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from src.message_server import EventType
+
 
 
 def _get_access_token(credentials_path: str) -> str:
     """Get access token using service account credentials"""
-    from google.oauth2 import service_account
-    from google.auth.transport.requests import Request
-    
     credentials = service_account.Credentials.from_service_account_file(
         credentials_path,
         scopes=['https://www.googleapis.com/auth/pubsub']
@@ -30,24 +27,24 @@ def _get_access_token(credentials_path: str) -> str:
 
 
 def _send_via_rest_api(
-    project_id: str, 
-    topic_name: str, 
-    message_data: str, 
-    credentials_path: str,
-    logger=None
+        project_id: str,
+        topic_name: str,
+        message_data: str,
+        credentials_path: str,
+        logger=None
 ) -> str:
     """Send message via REST API as fallback"""
     try:
         # Get access token
         access_token = _get_access_token(credentials_path)
-        
+
         # Prepare REST API call
         url = f"https://pubsub.googleapis.com/v1/projects/{project_id}/topics/{topic_name}:publish"
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json'
         }
-        
+
         # Prepare message payload
         import base64
         encoded_data = base64.b64encode(message_data.encode('utf-8')).decode('utf-8')
@@ -58,36 +55,36 @@ def _send_via_rest_api(
                 }
             ]
         }
-        
+
         # Make the request
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
-        
+
         result = response.json()
         message_id = result.get('messageIds', [None])[0]
-        
+
         if logger:
-            logger.info("Message published via REST API", message_id=message_id)
-            
+            logger.info("Message published via REST API", extra={"message_id": message_id})
+
         return message_id
-        
+
     except Exception as e:
         if logger:
-            logger.error("REST API publish failed", error=str(e))
+            logger.error("REST API publish failed", extra={"error": str(e)})
         raise
 
 
 def send_notification(
-    subject: str,
-    message: str,
-    user_id: Optional[Union[str, List[str]]] = None,
-    email_to: Optional[str] = None,
-    sender: str = "no-reply@arxiv.org",
-    event_type: Union[EventType, str] = EventType.NOTIFICATION,
-    metadata: Optional[Dict[str, Any]] = None,
-    project_id: Optional[str] = None,
-    topic_name: str = "notification-events",
-    logger=None
+        subject: str,
+        message: str,
+        user_id: Optional[Union[str, List[str]]] = None,
+        email_to: Optional[str] = None,
+        sender: str = "no-reply@arxiv.org",
+        event_type: Union[EventType, str] = EventType.NOTIFICATION,
+        metadata: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
+        topic_name: str = "notification-events",
+        logger=None
 ) -> str:
     """
     Send a notification message to the arXiv messaging service via Pub/Sub
@@ -135,12 +132,12 @@ def send_notification(
             publisher = pubsub_v1.PublisherClient(credentials=credentials)
         else:
             publisher = pubsub_v1.PublisherClient()
-            
+
         topic_path = publisher.topic_path(project_id, topic_name)
-        
+
     except Exception as e:
         if logger:
-            logger.error("Failed to create Pub/Sub client", error=str(e))
+            logger.error("Failed to create Pub/Sub client", extra={"error": str(e)})
         raise Exception(f"Failed to create Pub/Sub client: {str(e)}")
 
     # Generate unique event ID
@@ -180,22 +177,25 @@ def send_notification(
     if logger:
         if isinstance(user_id, list):
             logger.info("Sending multi-user notification",
-                       user_count=len(user_id),
-                       users=user_id[:5],  # Log first 5 users to avoid spam
-                       subject=subject,
-                       event_type=event_type,
-                       sender=sender,
-                       topic=topic_name,
-                       project_id=project_id)
+                        extra={
+                            "user_count": len(user_id),
+                            "users": user_id[:5],  # Log first 5 users to avoid spam
+                            "subject": subject,
+                            "event_type": event_type,
+                            "sender": sender,
+                            "topic": topic_name,
+                            "project_id": project_id
+                        })
         else:
             logger.info("Sending notification",
-                       user_id=user_id,
-                       email_to=email_to,
-                       subject=subject,
-                       event_type=event_type,
-                       sender=sender,
-                       topic=topic_name,
-                       project_id=project_id)
+                        extra={
+                            "user_id": user_id,
+                            "subject": subject,
+                            "event_type": event_type,
+                            "sender": sender,
+                            "topic": topic_name,
+                            "project_id": project_id
+                        })
 
     try:
         # Try publishing via Python client first
@@ -205,11 +205,12 @@ def send_notification(
         # Log success
         if logger:
             logger.info("Notification published successfully via Python client",
-                       message_id=message_id,
-                       event_id=event_id,
-                       user_id=user_id,
-                       email_to=email_to,
-                       topic_path=topic_path)
+                        extra={
+                            "message_id": message_id,
+                            "event_id": event_id,
+                            "user_id": user_id,
+                            "topic_path": topic_path
+                        })
 
         return message_id
 
@@ -219,41 +220,43 @@ def send_notification(
         if credentials_path and os.path.exists(credentials_path):
             if logger:
                 logger.warning("Python client failed, trying REST API fallback",
-                             error=str(e))
-            
+                               extra={"error": str(e)})
+
             try:
                 message_id = _send_via_rest_api(
                     project_id, topic_name, message_json, credentials_path, logger
                 )
-                
+
                 if logger:
                     logger.info("Notification published successfully via REST API fallback",
-                               message_id=message_id,
-                               event_id=event_id,
-                               user_id=user_id,
-                               email_to=email_to,
-                               topic_path=topic_path,
-                               method="rest_api_fallback")
-                
+                                extra={
+                                    "message_id": message_id,
+                                    "event_id": event_id,
+                                    "user_id": user_id,
+                                    "topic_path": topic_path,
+                                    "method": "rest_api_fallback"
+                                })
+
                 return message_id
-                
+
             except Exception as rest_error:
                 if logger:
                     logger.error("Both Python client and REST API failed",
-                               python_error=str(e),
-                               rest_error=str(rest_error))
+                                 extra={
+                                     "python_error": str(e),
+                                     "rest_error": str(rest_error)
+                                 })
                 raise Exception(f"Failed to publish via both methods - Python client: {str(e)}, REST API: {str(rest_error)}")
-        
+
         # No fallback available, re-raise original error
         if logger:
             logger.error("Failed to publish notification",
-                        user_id=user_id,
-                        email_to=email_to,
-                        subject=subject,
-                        error=str(e),
-                        topic_path=topic_path,
-                        error_type=type(e).__name__)
-        
+                         extra={
+                             "user_id": user_id,
+                             "subject": subject,
+                             "error": str(e),
+                             "topic_path": topic_path,
+                             "error_type": type(e).__name__
+                         })
+
         raise Exception(f"Failed to publish to {topic_path}: {str(e)}")
-
-
