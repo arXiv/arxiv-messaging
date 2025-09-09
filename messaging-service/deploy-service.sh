@@ -46,7 +46,7 @@ gcloud run deploy $SERVICE_NAME \
   --platform managed \
   --region $REGION \
   --allow-unauthenticated \
-  --set-env-vars GCP_PROJECT_ID=$PROJECT_ID,PUBSUB_SUBSCRIPTION_NAME=$PUBSUB_NAME,FIRESTORE_DATABASE_ID=messaging,SMTP_SERVER=smtp-relay.gmail.com,SMTP_PORT=$SMTP_PORT,SMTP_USE_SSL=$SMTP_USE_SSL \
+  --set-env-vars GCP_PROJECT_ID=$PROJECT_ID,PUBSUB_SUBSCRIPTION_NAME=$PUBSUB_NAME,FIRESTORE_DATABASE_ID=messaging,SMTP_SERVER=smtp-relay.gmail.com,SMTP_PORT=$SMTP_PORT,SMTP_USE_SSL=$SMTP_USE_SSL,SERVICE_MODE=combined \
   --set-secrets SMTP_PASSWORD=$SECRET_NAME:latest \
   --memory 512Mi \
   --cpu 1 \

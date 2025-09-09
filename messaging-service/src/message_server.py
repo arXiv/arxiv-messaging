@@ -712,6 +712,111 @@ class EventStore:
                 'errors': [f"Flush operation failed: {str(e)}"]
             }
 
+    def delete_event_by_id(self, event_id: str) -> bool:
+        """Delete a specific event by its ID"""
+        try:
+            doc_ref = self.db.collection(self.events_collection).document(event_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                logger.warning("Event not found for deletion", event_id=event_id)
+                return False
+            
+            doc_ref.delete()
+            logger.info("Event deleted successfully", event_id=event_id)
+            return True
+            
+        except Exception as e:
+            logger.error("Failed to delete event", event_id=event_id, error=str(e))
+            return False
+
+    def delete_events_by_ids(self, event_ids: List[str]) -> Dict[str, Any]:
+        """Delete multiple events by their IDs"""
+        try:
+            deleted_count = 0
+            failed_ids = []
+            
+            # Delete in batches for efficiency
+            batch = self.db.batch()
+            batch_size = 0
+            
+            for event_id in event_ids:
+                try:
+                    doc_ref = self.db.collection(self.events_collection).document(event_id)
+                    batch.delete(doc_ref)
+                    batch_size += 1
+                    
+                    # Commit batch every 500 operations (Firestore limit)
+                    if batch_size >= 500:
+                        batch.commit()
+                        deleted_count += batch_size
+                        batch = self.db.batch()
+                        batch_size = 0
+                        
+                except Exception as e:
+                    failed_ids.append(event_id)
+                    logger.error("Failed to add event to delete batch", 
+                               event_id=event_id, error=str(e))
+            
+            # Commit remaining operations
+            if batch_size > 0:
+                batch.commit()
+                deleted_count += batch_size
+            
+            logger.info("Bulk event deletion completed",
+                       total_requested=len(event_ids),
+                       deleted=deleted_count,
+                       failed=len(failed_ids))
+            
+            return {
+                'deleted_count': deleted_count,
+                'failed_ids': failed_ids,
+                'total_requested': len(event_ids)
+            }
+            
+        except Exception as e:
+            logger.error("Failed bulk event deletion", error=str(e))
+            return {
+                'deleted_count': 0,
+                'failed_ids': event_ids,
+                'total_requested': len(event_ids)
+            }
+
+    def get_all_users_with_subscriptions(self) -> List[str]:
+        """Get list of all user IDs that have subscriptions"""
+        try:
+            docs = self.db.collection(self.subscriptions_collection).stream()
+            user_ids = set()
+            
+            for doc in docs:
+                data = doc.to_dict()
+                if 'user_id' in data:
+                    user_ids.add(data['user_id'])
+            
+            return list(user_ids)
+            
+        except Exception as e:
+            logger.error("Failed to get users with subscriptions", error=str(e))
+            return []
+
+    def delete_subscription(self, subscription_id: str) -> bool:
+        """Delete a subscription by its ID"""
+        try:
+            doc_ref = self.db.collection(self.subscriptions_collection).document(subscription_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                logger.warning("Subscription not found for deletion", subscription_id=subscription_id)
+                return False
+            
+            doc_ref.delete()
+            logger.info("Subscription deleted successfully", subscription_id=subscription_id)
+            return True
+            
+        except Exception as e:
+            logger.error("Failed to delete subscription", subscription_id=subscription_id, error=str(e))
+            return False
+
 class EventAggregator:
     """Handles event aggregation logic"""
     

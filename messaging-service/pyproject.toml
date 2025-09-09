@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "arxiv-messaging"
+name = "arxiv-messaging-service"
 version = "0.1.0"
 description = "arXiv messaging service"
 authors = ["arXiv dev <developers@arxiv.org>"]
@@ -23,7 +23,9 @@ schedule = "^1.2.2"
 firebase-admin = "^7.1.0"
 structlog = "^24.1.0"
 requests = "^2.32.3"
-arxiv-messaging = {path = "../arxiv_messaging", develop = true}
+arxiv-messaging = {path = "../arxiv_messaging"}
+fastapi = "^0.115.6"
+uvicorn = "^0.32.1"
 
 
 [tool.poetry.group.dev.dependencies]

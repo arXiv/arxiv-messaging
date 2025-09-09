@@ -7,7 +7,8 @@ IMAGE_TAG="gcr.io/$PROJECT_ID/$SERVICE_NAME:latest"
 
 # Build and push Docker image
 echo "Building Docker image..."
-docker build -t $IMAGE_TAG .
+# Build from parent directory to include arxiv_messaging dependency
+docker build -t $IMAGE_TAG -f messaging-service/Dockerfile .
 
 echo "Pushing image to Google Container Registry..."
 docker push $IMAGE_TAG

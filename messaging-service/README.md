@@ -355,4 +355,358 @@ CMD ["python", "main.py"]
 - Large user event collections may impact memory
 - Consider pagination for users with thousands of events
 
-This database-centric architecture provides reliable message delivery with strong consistency guarantees while avoiding the complexity of distributed service coordination.
+## REST API Endpoints
+
+The service now provides a FastAPI-based REST API for managing undelivered messages, eliminating the need for external CLI tools to configure SMTP credentials.
+
+### Service Modes
+
+The service can run in three modes via the `SERVICE_MODE` environment variable:
+- `combined` (default): Both API server and Pub/Sub processor
+- `api-only`: Only the REST API server
+- `pubsub-only`: Only the Pub/Sub message processor
+
+### API Endpoints
+
+#### 1. List Users (`GET /users`)
+Get all users with their subscription and undelivered message counts.
+
+```bash
+curl "http://localhost:8080/users?include_empty=false"
+```
+
+**Response:**
+```json
+[
+  {
+    "user_id": "ntai",
+    "subscription_count": 2,
+    "undelivered_count": 5,
+    "enabled_subscriptions": 2
+  }
+]
+```
+
+#### 2. Get User Messages (`GET /users/{user_id}/messages`)
+Get undelivered messages for a specific user (RESTful design).
+
+```bash
+# Get all messages for a user
+curl "http://localhost:8080/users/ntai/messages"
+
+# Filter by event type and limit
+curl "http://localhost:8080/users/ntai/messages?event_type=NOTIFICATION&limit=10"
+```
+
+**Response:**
+```json
+[
+  {
+    "event_id": "event-123",
+    "user_id": "ntai",
+    "event_type": "NOTIFICATION",
+    "message": "Your submission was processed",
+    "sender": "arxiv-system@arxiv.org",
+    "subject": "Submission Update",
+    "timestamp": "2023-12-01T10:00:00",
+    "metadata": {"source": "arxiv-submission"}
+  }
+]
+```
+
+#### 2a. List All Undelivered Messages (`GET /undelivered`)
+Get all undelivered messages across all users (admin/monitoring view).
+
+```bash
+# Get all undelivered messages (admin view)
+curl "http://localhost:8080/undelivered?limit=100&event_type=ALERT"
+```
+
+#### 3. Flush Messages (`POST /flush`)
+Flush undelivered messages with delivery via SMTP/webhooks.
+
+```bash
+# Flush all undelivered messages
+curl -X POST "http://localhost:8080/flush" \
+  -H "Content-Type: application/json" \
+  -d '{"dry_run": false, "force_delivery": false}'
+
+# Flush for specific user
+curl -X POST "http://localhost:8080/flush" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "ntai", "dry_run": false}'
+
+# Dry run (no actual delivery)
+curl -X POST "http://localhost:8080/flush" \
+  -H "Content-Type: application/json" \
+  -d '{"dry_run": true}'
+```
+
+**Response:**
+```json
+{
+  "users_processed": 15,
+  "messages_delivered": 23,
+  "messages_failed": 2,
+  "events_cleared": 21,
+  "errors": ["Failed to deliver to user_xyz: SMTP timeout"],
+  "dry_run": false
+}
+```
+
+#### 4. Get Specific Message (`GET /users/{user_id}/messages/{message_id}`)
+Get a specific message for a user.
+
+```bash
+curl "http://localhost:8080/users/ntai/messages/event-123"
+```
+
+**Response:**
+```json
+{
+  "event_id": "event-123",
+  "user_id": "ntai",
+  "event_type": "NOTIFICATION",
+  "message": "Your submission was processed",
+  "sender": "arxiv-system@arxiv.org",
+  "subject": "Submission Update",
+  "timestamp": "2023-12-01T10:00:00",
+  "metadata": {"source": "arxiv-submission"}
+}
+```
+
+#### 5. Delete Specific Message (`DELETE /users/{user_id}/messages/{message_id}`)
+Delete a specific message for a user.
+
+```bash
+curl -X DELETE "http://localhost:8080/users/ntai/messages/event-123"
+```
+
+**Response:**
+```json
+{
+  "message": "Message deleted successfully",
+  "user_id": "ntai",
+  "message_id": "event-123"
+}
+```
+
+#### 5a. Delete User Messages (`DELETE /users/{user_id}/messages`)
+Delete all messages for a user, optionally before a timestamp.
+
+```bash
+# Delete all messages for a user
+curl -X DELETE "http://localhost:8080/users/ntai/messages"
+
+# Delete messages before timestamp
+curl -X DELETE "http://localhost:8080/users/ntai/messages?before_timestamp=2023-12-01T00:00:00"
+```
+
+#### 5b. Bulk Delete Messages (`DELETE /undelivered`)
+Admin endpoint for bulk deletion with various filtering options.
+
+```bash
+# Delete specific events by ID
+curl -X DELETE "http://localhost:8080/undelivered" \
+  -H "Content-Type: application/json" \
+  -d '{"event_ids": ["event-123", "event-456"]}'
+
+# Delete all messages for a user (admin operation)
+curl -X DELETE "http://localhost:8080/undelivered" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "ntai"}'
+```
+
+#### Statistics Endpoint (`GET /undelivered/stats`)
+Get comprehensive statistics about undelivered messages.
+
+```bash
+curl "http://localhost:8080/undelivered/stats"
+```
+
+**Response:**
+```json
+{
+  "total_users_with_undelivered": 15,
+  "total_undelivered_events": 47,
+  "users_with_counts": {
+    "ntai": 5,
+    "researcher123": 12
+  },
+  "events_by_type": {
+    "NOTIFICATION": 35,
+    "ALERT": 8,
+    "WARNING": 4
+  }
+}
+```
+
+### API Client Example
+
+A Python client is provided in `api_client_example.py`:
+
+```python
+from api_client_example import MessagingAPIClient
+
+client = MessagingAPIClient("http://localhost:8080")
+
+# RESTful user message operations
+messages = client.get_user_messages("ntai", limit=10)
+specific_msg = client.get_user_message("ntai", "event-123")
+client.delete_user_message("ntai", "event-123")
+client.delete_user_messages("ntai")  # Delete all for user
+
+# Flush operations (uses internal SMTP credentials)
+result = client.flush_messages(user_id="ntai", dry_run=True)
+print(f"Would deliver: {result['users_processed']} users")
+
+# Admin operations
+stats = client.get_undelivered_stats()
+all_messages = client.list_all_undelivered_messages()
+client.delete_messages_bulk(event_ids=["event-1", "event-2"])
+```
+
+### Benefits of REST API Approach
+
+1. **No External SMTP Setup**: Flushing uses the service's configured SMTP credentials
+2. **Fine-grained Control**: Delete specific events, users, or time ranges
+3. **Real-time Operations**: Immediate feedback without batch processing delays
+4. **Standard HTTP Interface**: Easy integration with monitoring and automation tools
+5. **Structured Responses**: JSON format with detailed error information
+6. **Flexible Deployment**: Can run API-only, Pub/Sub-only, or combined modes
+
+### Environment Variables
+
+```env
+# Service configuration
+SERVICE_MODE=combined  # combined, api-only, pubsub-only
+PORT=8080             # API server port (Cloud Run uses this)
+
+# Existing variables for Pub/Sub and Firestore
+GCP_PROJECT_ID=arxiv-production
+PUBSUB_SUBSCRIPTION_NAME=event-subscription
+FIRESTORE_DATABASE_ID=messaging
+
+# SMTP configuration (used by flush operations)
+SMTP_SERVER=smtp-relay.gmail.com
+SMTP_PORT=465
+SMTP_USER=smtp-relay@arxiv.org
+SMTP_PASSWORD=your-smtp-password
+```
+
+## Subscription Management Endpoints
+
+### Get User Subscriptions (`GET /users/{user_id}/subscriptions`)
+Get all subscriptions for a specific user.
+
+```bash
+curl "http://localhost:8080/users/ntai/subscriptions"
+```
+
+**Response:**
+```json
+[
+  {
+    "subscription_id": "ntai-email-1704105600",
+    "user_id": "ntai",
+    "delivery_method": "EMAIL",
+    "aggregation_frequency": "DAILY",
+    "aggregation_method": "HTML",
+    "delivery_error_strategy": "RETRY",
+    "delivery_time": "09:00",
+    "timezone": "UTC",
+    "email_address": "ntai@arxiv.org",
+    "slack_webhook_url": null,
+    "enabled": true
+  }
+]
+```
+
+### Create User Subscription (`POST /users/{user_id}/subscriptions`)
+Create a new subscription for a user.
+
+```bash
+# Create email subscription
+curl -X POST "http://localhost:8080/users/ntai/subscriptions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "ntai",
+    "delivery_method": "EMAIL",
+    "aggregation_frequency": "DAILY",
+    "aggregation_method": "HTML",
+    "delivery_time": "09:00",
+    "timezone": "UTC",
+    "email_address": "ntai@arxiv.org",
+    "enabled": true
+  }'
+
+# Create Slack subscription
+curl -X POST "http://localhost:8080/users/ntai/subscriptions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "ntai",
+    "delivery_method": "SLACK",
+    "aggregation_frequency": "IMMEDIATE",
+    "slack_webhook_url": "https://hooks.slack.com/triggers/T123/B456/xyz789",
+    "enabled": true
+  }'
+```
+
+### Get Specific Subscription (`GET /users/{user_id}/subscriptions/{subscription_id}`)
+Get details of a specific subscription.
+
+```bash
+curl "http://localhost:8080/users/ntai/subscriptions/ntai-email-1704105600"
+```
+
+### Update Subscription (`PUT /users/{user_id}/subscriptions/{subscription_id}`)
+Update a specific subscription (partial updates supported).
+
+```bash
+# Update delivery frequency
+curl -X PUT "http://localhost:8080/users/ntai/subscriptions/ntai-email-1704105600" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "aggregation_frequency": "WEEKLY",
+    "delivery_time": "10:00"
+  }'
+
+# Disable subscription
+curl -X PUT "http://localhost:8080/users/ntai/subscriptions/ntai-email-1704105600" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+### Delete Subscription (`DELETE /users/{user_id}/subscriptions/{subscription_id}`)
+Delete a specific subscription.
+
+```bash
+curl -X DELETE "http://localhost:8080/users/ntai/subscriptions/ntai-email-1704105600"
+```
+
+**Response:**
+```json
+{
+  "message": "Subscription deleted successfully",
+  "user_id": "ntai",
+  "subscription_id": "ntai-email-1704105600"
+}
+```
+
+### Subscription Field Validation
+
+**Required for Email Subscriptions:**
+- `delivery_method`: "EMAIL"
+- `email_address`: Valid email address
+
+**Required for Slack Subscriptions:**
+- `delivery_method`: "SLACK" 
+- `slack_webhook_url`: Valid Slack webhook URL
+
+**Valid Enum Values:**
+- `delivery_method`: EMAIL, SLACK
+- `aggregation_frequency`: IMMEDIATE, HOURLY, DAILY, WEEKLY
+- `aggregation_method`: PLAIN, HTML, MIME
+- `delivery_error_strategy`: RETRY, IGNORE
+
+This REST API architecture provides reliable message delivery with strong consistency guarantees while offering modern HTTP-based management capabilities.
