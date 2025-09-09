@@ -496,6 +496,222 @@ class EventStore:
                         error=str(e))
             return []
 
+    def get_undelivered_events(self, limit: Optional[int] = None) -> Dict[str, List[Event]]:
+        """Get all undelivered events grouped by user_id"""
+        try:
+            query = self.db.collection(self.events_collection)
+            if limit:
+                query = query.limit(limit)
+            
+            docs = query.stream()
+            events_by_user = {}
+            
+            for doc in docs:
+                data = doc.to_dict()
+                user_id = data['user_id']
+                
+                # Convert string back to EventType enum
+                try:
+                    event_type_str = data.get('event_type', 'NOTIFICATION')
+                    event_type_enum = EventType(event_type_str)
+                except ValueError:
+                    logger.warning("Unknown event_type from Firestore, defaulting to NOTIFICATION", 
+                                  event_type=event_type_str)
+                    event_type_enum = EventType.NOTIFICATION
+                    
+                event = Event(
+                    event_id=data['event_id'],
+                    user_id=data['user_id'],
+                    event_type=event_type_enum,
+                    message=data['message'],
+                    sender=data.get('sender', ''),
+                    subject=data.get('subject', ''),
+                    timestamp=data['timestamp'],
+                    metadata=data.get('metadata', {})
+                )
+                
+                if user_id not in events_by_user:
+                    events_by_user[user_id] = []
+                events_by_user[user_id].append(event)
+            
+            return events_by_user
+            
+        except Exception as e:
+            logger.error("Failed to get undelivered events", error=str(e))
+            return {}
+
+    def get_undelivered_events_by_user(self, user_id: str) -> List[Event]:
+        """Get undelivered events for a specific user"""
+        return self.get_events_for_user(user_id)
+
+    def get_undelivered_stats(self) -> Dict[str, Any]:
+        """Get statistics about undelivered messages"""
+        try:
+            undelivered_events = self.get_undelivered_events()
+            
+            stats = {
+                'total_users_with_undelivered': len(undelivered_events),
+                'total_undelivered_events': sum(len(events) for events in undelivered_events.values()),
+                'users_with_counts': {user_id: len(events) for user_id, events in undelivered_events.items()},
+                'events_by_type': {}
+            }
+            
+            # Count events by type
+            for events in undelivered_events.values():
+                for event in events:
+                    event_type = event.event_type.value
+                    if event_type not in stats['events_by_type']:
+                        stats['events_by_type'][event_type] = 0
+                    stats['events_by_type'][event_type] += 1
+            
+            return stats
+            
+        except Exception as e:
+            logger.error("Failed to get undelivered stats", error=str(e))
+            return {}
+
+    def flush_undelivered_messages(self, delivery_service: 'DeliveryService', aggregator: 'EventAggregator', user_id: str = None, force_delivery: bool = False) -> Dict[str, Any]:
+        """Flush undelivered messages by delivering them with appropriate aggregation
+        
+        Args:
+            delivery_service: DeliveryService instance to use for sending
+            aggregator: EventAggregator instance for formatting messages
+            user_id: Optional specific user ID to flush messages for (None = all users)
+            force_delivery: If True, deliver regardless of aggregation preferences
+            
+        Returns:
+            Dict with flush results and statistics
+        """
+        try:
+            flush_results = {
+                'users_processed': 0,
+                'messages_delivered': 0,
+                'messages_failed': 0,
+                'events_cleared': 0,
+                'errors': []
+            }
+            
+            # Get undelivered events
+            if user_id:
+                undelivered_events = {user_id: self.get_undelivered_events_by_user(user_id)}
+                undelivered_events = {k: v for k, v in undelivered_events.items() if v}
+            else:
+                undelivered_events = self.get_undelivered_events()
+            
+            logger.info("Starting flush of undelivered messages",
+                       total_users=len(undelivered_events),
+                       total_events=sum(len(events) for events in undelivered_events.values()),
+                       target_user=user_id,
+                       force_delivery=force_delivery)
+            
+            # Process each user's undelivered events
+            for current_user_id, events in undelivered_events.items():
+                try:
+                    flush_results['users_processed'] += 1
+                    
+                    # Get user subscriptions
+                    subscriptions = self.get_user_subscriptions(current_user_id)
+                    if not subscriptions:
+                        logger.warning("No subscriptions found for user",
+                                     user_id=current_user_id,
+                                     undelivered_events=len(events))
+                        continue
+                    
+                    # Process each subscription for this user
+                    for subscription in subscriptions:
+                        if not subscription.enabled:
+                            continue
+                            
+                        try:
+                            # Aggregate events according to subscription preferences
+                            content = aggregator.aggregate_events(
+                                current_user_id, 
+                                events, 
+                                subscription.aggregation_method
+                            )
+                            
+                            if not content:
+                                continue
+                            
+                            # Create subject and sender for flush message
+                            subject = f"Undelivered Messages Summary for {current_user_id}"
+                            sender = "arxiv-messaging-flush@arxiv.org"
+                            
+                            # Attempt delivery
+                            correlation_id = f"flush-{current_user_id}-{int(datetime.now().timestamp())}"
+                            
+                            logger.info("Attempting to flush undelivered messages",
+                                       user_id=current_user_id,
+                                       subscription_id=subscription.subscription_id,
+                                       event_count=len(events),
+                                       delivery_method=subscription.delivery_method.value,
+                                       aggregation_method=subscription.aggregation_method.value,
+                                       correlation_id=correlation_id)
+                            
+                            success = delivery_service.deliver(
+                                subscription, 
+                                content, 
+                                subject=subject,
+                                sender=sender,
+                                correlation_id=correlation_id
+                            )
+                            
+                            if success:
+                                flush_results['messages_delivered'] += 1
+                                logger.info("Undelivered messages flushed successfully",
+                                           user_id=current_user_id,
+                                           subscription_id=subscription.subscription_id,
+                                           events_delivered=len(events),
+                                           correlation_id=correlation_id)
+                            else:
+                                flush_results['messages_failed'] += 1
+                                error_msg = f"Failed to deliver flush message for user {current_user_id}, subscription {subscription.subscription_id}"
+                                flush_results['errors'].append(error_msg)
+                                logger.error("Failed to flush undelivered messages",
+                                           user_id=current_user_id,
+                                           subscription_id=subscription.subscription_id,
+                                           correlation_id=correlation_id)
+                                
+                        except Exception as e:
+                            flush_results['messages_failed'] += 1
+                            error_msg = f"Error processing subscription {subscription.subscription_id} for user {current_user_id}: {str(e)}"
+                            flush_results['errors'].append(error_msg)
+                            logger.error("Error during flush delivery",
+                                       user_id=current_user_id,
+                                       subscription_id=subscription.subscription_id,
+                                       error=str(e))
+                    
+                    # Clear events after successful delivery (or if force_delivery is True)
+                    if flush_results['messages_delivered'] > 0 or force_delivery:
+                        # Clear all events for this user 
+                        self.clear_user_events(current_user_id, datetime.now())
+                        flush_results['events_cleared'] += len(events)
+                        logger.info("Cleared undelivered events after flush",
+                                   user_id=current_user_id,
+                                   events_cleared=len(events))
+                        
+                except Exception as e:
+                    error_msg = f"Error processing user {current_user_id}: {str(e)}"
+                    flush_results['errors'].append(error_msg)
+                    logger.error("Error processing user during flush",
+                               user_id=current_user_id,
+                               error=str(e))
+            
+            logger.info("Completed flush of undelivered messages",
+                       **flush_results)
+            
+            return flush_results
+            
+        except Exception as e:
+            logger.error("Failed to flush undelivered messages", error=str(e))
+            return {
+                'users_processed': 0,
+                'messages_delivered': 0,
+                'messages_failed': 0,
+                'events_cleared': 0,
+                'errors': [f"Flush operation failed: {str(e)}"]
+            }
+
 class EventAggregator:
     """Handles event aggregation logic"""
     
