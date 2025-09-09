@@ -2,9 +2,11 @@
 name = "arxiv-messaging"
 version = "0.1.0"
 description = "ArXiv messaging library for event types and messaging utilities"
-authors = ["ArXiv Team <team@arxiv.org>"]
+authors = ["ArXiv Team <developers@arxiv.org>"]
 readme = "README.md"
-packages = [{include = "arxiv_messaging", from = ".."}]
+packages = [
+  {include = "arxiv_messaging"},
+]
 
 [tool.poetry.dependencies]
 python = "^3.12"
