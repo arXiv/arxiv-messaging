@@ -42,6 +42,7 @@ class Subscription:
     email_address: Optional[str] = None
     slack_webhook_url: Optional[str] = None
     enabled: bool = True  # Allow disabling subscriptions without deleting
+    aggregated_message_subject: Optional[str] = None  # Custom subject for aggregated messages
 
 # Backward compatibility alias
 UserPreference = Subscription
