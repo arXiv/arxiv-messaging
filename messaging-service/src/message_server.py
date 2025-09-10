@@ -612,7 +612,7 @@ class EventStore:
             logger.error("Failed to get undelivered stats", error=str(e))
             return {}
 
-    def flush_undelivered_messages(self, delivery_service: 'DeliveryService', aggregator: 'EventAggregator', user_id: str = None, force_delivery: bool = False) -> Dict[str, Any]:
+    def flush_undelivered_messages(self, delivery_service: 'DeliveryService', aggregator: 'EventAggregator', user_id: str = None, force_delivery: bool = False, dry_run: bool = False) -> Dict[str, Any]:
         """Flush undelivered messages by delivering them with appropriate aggregation
         
         Args:
@@ -620,6 +620,7 @@ class EventStore:
             aggregator: EventAggregator instance for formatting messages
             user_id: Optional specific user ID to flush messages for (None = all users)
             force_delivery: If True, deliver regardless of aggregation preferences
+            dry_run: If True, show what would be processed without actually delivering
             
         Returns:
             Dict with flush results and statistics
@@ -630,7 +631,8 @@ class EventStore:
                 'messages_delivered': 0,
                 'messages_failed': 0,
                 'events_cleared': 0,
-                'errors': []
+                'errors': [],
+                'dry_run': dry_run
             }
             
             # Get undelivered events
@@ -644,7 +646,8 @@ class EventStore:
                        total_users=len(undelivered_events),
                        total_events=sum(len(events) for events in undelivered_events.values()),
                        target_user=user_id,
-                       force_delivery=force_delivery)
+                       force_delivery=force_delivery,
+                       dry_run=dry_run)
             
             # Process each user's undelivered events
             for current_user_id, events in undelivered_events.items():
@@ -682,24 +685,35 @@ class EventStore:
                                 subject = f"Undelivered Messages Summary for {current_user_id}"
                             sender = events[0].sender if events else None
                             
-                            # Attempt delivery
+                            # Attempt delivery (or simulate if dry_run)
                             correlation_id = f"flush-{current_user_id}-{int(datetime.now().timestamp())}"
                             
-                            logger.info("Attempting to flush undelivered messages",
-                                       user_id=current_user_id,
-                                       subscription_id=subscription.subscription_id,
-                                       event_count=len(events),
-                                       delivery_method=subscription.delivery_method.value,
-                                       aggregation_method=subscription.aggregation_method.value,
-                                       correlation_id=correlation_id)
-                            
-                            success = delivery_service.deliver(
-                                subscription, 
-                                content, 
-                                subject=subject,
-                                sender=sender,
-                                correlation_id=correlation_id
-                            )
+                            if dry_run:
+                                logger.info("DRY RUN: Would flush undelivered messages",
+                                           user_id=current_user_id,
+                                           subscription_id=subscription.subscription_id,
+                                           event_count=len(events),
+                                           delivery_method=subscription.delivery_method.value,
+                                           aggregation_method=subscription.aggregation_method.value,
+                                           correlation_id=correlation_id,
+                                           content_preview=content[:200])
+                                success = True  # Simulate success for dry run
+                            else:
+                                logger.info("Attempting to flush undelivered messages",
+                                           user_id=current_user_id,
+                                           subscription_id=subscription.subscription_id,
+                                           event_count=len(events),
+                                           delivery_method=subscription.delivery_method.value,
+                                           aggregation_method=subscription.aggregation_method.value,
+                                           correlation_id=correlation_id)
+                                
+                                success = delivery_service.deliver(
+                                    subscription, 
+                                    content, 
+                                    subject=subject,
+                                    sender=sender,
+                                    correlation_id=correlation_id
+                                )
                             
                             if success:
                                 flush_results['messages_delivered'] += 1
@@ -755,13 +769,17 @@ class EventStore:
                             logger.info("Clearing events despite failures (no retry subscriptions)", 
                                        user_id=current_user_id)
                     
-                    if should_clear_events:
-                        # Clear all events for this user 
+                    if should_clear_events and not dry_run:
+                        # Clear all events for this user (unless dry_run)
                         self.clear_user_events(current_user_id, datetime.now())
                         flush_results['events_cleared'] += len(events)
                         logger.info("Cleared undelivered events after flush",
                                    user_id=current_user_id,
                                    events_cleared=len(events))
+                    elif should_clear_events and dry_run:
+                        logger.info("DRY RUN: Would clear undelivered events after flush",
+                                   user_id=current_user_id,
+                                   events_would_clear=len(events))
                     else:
                         logger.info("Events retained for retry attempts",
                                    user_id=current_user_id,
@@ -1136,7 +1154,7 @@ class PubSubEventProcessor:
                     temp_preference, 
                     data.get('message', ''), 
                     data.get('subject', ''), 
-                    sender=data.get('sender'),
+                    sender=data.get('sender', None),
                     correlation_id=correlation_id
                 )
                 
