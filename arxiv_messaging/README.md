@@ -2,14 +2,87 @@
 
 A Python library providing shared components for arXiv's messaging system, including event types, delivery methods, user preferences, and CLI tools for managing subscribers and undelivered messages.
 
+## Quick Start: Sending Notifications
+
+The primary way to send notifications is using the `send_notification()` function:
+
+### Basic Usage
+
+```python
+from arxiv_messaging.send_notification import send_notification
+from arxiv_messaging.event_type import EventType
+
+# Send a simple notification
+message_id = send_notification(
+    user_id="researcher123",
+    event_type="NOTIFICATION",
+    message="Your paper submission has been received",
+    subject="Submission Confirmation",
+    sender="no-reply@arxiv.org"
+)
+print(f"Message sent with ID: {message_id}")
+```
+
+### Advanced Usage
+
+```python
+# Send to multiple users
+message_id = send_notification(
+    user_id=["user1", "user2", "user3"],  # List of users
+    event_type=EventType.ALERT,  # Use enum
+    message="System maintenance scheduled for tonight",
+    subject="Maintenance Alert",
+    sender="ops@arxiv.org",
+    metadata={
+        "maintenance_window": "2025-09-10 22:00-23:00 UTC",
+        "affected_services": ["search", "upload"]
+    }
+)
+
+# Send to direct email (bypasses user subscriptions)
+message_id = send_notification(
+    email_to="external.user@university.edu",  # Direct email delivery
+    event_type="NOTIFICATION",
+    message="Your collaboration request has been approved",
+    subject="Collaboration Approved",
+    sender="collab@arxiv.org"
+)
+```
+
+### Environment Setup
+
+The function requires these environment variables:
+
+```bash
+export GCP_PROJECT_ID=your-gcp-project
+export PUBSUB_TOPIC_NAME=notification-events  # Default topic
+# Optional: Override topic name per call
+```
+
+### Function Parameters
+
+- **user_id**: `str` or `List[str]` - Target user ID(s) for registered users
+- **email_to**: `str` - Direct email address (alternative to user_id)  
+- **event_type**: `str` or `EventType` - Type of event (NOTIFICATION, ALERT, WARNING, INFO)
+- **message**: `str` - Message content
+- **subject**: `str` - Message subject line
+- **sender**: `str` - Sender email address
+- **metadata**: `Dict[str, Any]` - Additional event metadata (optional)
+- **project_id**: `str` - GCP project ID (optional, uses env var)
+- **topic_name**: `str` - Pub/Sub topic (optional, defaults to 'notification-events')
+
+### Return Value
+
+Returns the Pub/Sub message ID as a string for tracking purposes.
+
 ## Overview
 
 This library serves as the common interface between message publishers and the messaging service, providing:
 
-- **Shared data structures** for events, subscriptions, and delivery preferences
+- **Notification sending** via `send_notification()` function
+- **Shared data structures** for events, subscriptions, and delivery preferences  
 - **CLI tools** for subscriber management and message flushing
 - **Firebase/Firestore integration** utilities
-- **Notification sending** capabilities
 
 ## Components
 
