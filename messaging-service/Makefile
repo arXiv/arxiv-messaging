@@ -105,7 +105,7 @@ deploy: build-push ## Build, push and deploy to Cloud Run
 		--min-instances 1 \
 		--max-instances 1 \
 		--concurrency 1 \
-		--ingress internal \
+		--ingress all \
 		--vpc-connector projects/$(PROJECT_ID)/locations/$(REGION)/connectors/clourrunconnector \
 		--vpc-egress all-traffic
 	@echo "✅ Deployment complete!"
@@ -114,12 +114,19 @@ deploy: build-push ## Build, push and deploy to Cloud Run
 	@gcloud run services describe $(SERVICE_NAME) --region $(REGION) --format 'value(status.url)'
 
 proxy: ## Start authenticated proxy to Cloud Run service on localhost:8080
-	@echo "🔗 Starting proxy to Cloud Run service..."
+	@echo "🔗 Starting authenticated proxy to Cloud Run service..."
+	@echo "📡 This proxy automatically embeds authentication tokens"
+	@echo "🚀 Starting proxy server..."
+	./start-proxy.sh
+
+proxy-basic: ## Start basic gcloud proxy (no auto-auth)
+	@echo "🔗 Starting basic gcloud proxy to Cloud Run service..."
 	@echo "📡 Access endpoints at: http://localhost:8080"
 	@echo "   Health: http://localhost:8080/health"
 	@echo "   Docs: http://localhost:8080/docs" 
 	@echo "   OpenAPI: http://localhost:8080/openapi.json"
 	@echo ""
+	@echo "⚠️  Note: This proxy does NOT embed auth tokens automatically"
 	@echo "Press Ctrl+C to stop the proxy"
 	gcloud run services proxy $(SERVICE_NAME) --region=$(REGION) --port=8080
 
