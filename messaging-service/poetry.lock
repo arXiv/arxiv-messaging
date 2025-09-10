@@ -52,9 +52,9 @@ structlog = "^24.1.0"
 
 [package.source]
 type = "git"
-url = "ssh://git@github.com/arXiv/arxiv-messaging.git"
+url = "https://github.com/arXiv/arxiv-messaging.git"
 reference = "master"
-resolved_reference = "686c60233105c88bcd087b792a59c985e4838852"
+resolved_reference = "768527ea6db35476dbea5e0e2fc61ecc79b8f4d3"
 subdirectory = "arxiv_messaging"
 
 [[package]]
@@ -1949,4 +1949,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "9061bdb01eb1b279404eec584901c723d849acc4d8c359790425fabb227891a1"
+content-hash = "aee55a57d396e14392fe473d276d8a59f83dcb5bca12e5e9033ef475f76e8afd"

@@ -7,8 +7,8 @@ import argparse
 import os
 import sys
 import structlog
-from . import send_notification
-from .event_type import EventType
+from arxiv_messaging.send_notification import send_notification
+from arxiv_messaging.event_type import EventType
 
 def setup_logging():
     """Configure structured logging"""
@@ -31,9 +31,10 @@ def setup_logging():
 
 def send_test_message(project_id: str, topic_name: str, user_id = None, email_to: str = None, 
                      subject: str = "test", message: str = "test message", 
-                     event_type: str = "NOTIFICATION", sender: str = "no-reply@arxiv.org"):
+                     event_type: str = "NOTIFICATION", sender: str = "no-reply@arxiv.org",
+                     count: int = 1):
     """
-    Send a test message to Pub/Sub topic using the send_notification function
+    Send test message(s) to Pub/Sub topic using the send_notification function
     
     Args:
         project_id: GCP project ID
@@ -44,26 +45,49 @@ def send_test_message(project_id: str, topic_name: str, user_id = None, email_to
         message: Message content
         event_type: Event type (NOTIFICATION, ALERT, etc.)
         sender: Sender email address
+        count: Number of copies to send (for testing aggregation)
     """
     logger = structlog.get_logger(__name__)
     
     try:
-        # Use the send_notification function with test metadata
-        message_id = send_notification(
-            user_id=user_id,
-            email_to=email_to,
-            subject=subject,
-            message=message,
-            sender=sender,
-            event_type=event_type,
-            metadata={"source": "test-script", "test": True},
-            project_id=project_id,
-            topic_name=topic_name,
-            logger=logger
-        )
+        message_ids = []
         
-        print(f"✅ Test message sent successfully!")
-        print(f"   Message ID: {message_id}")
+        # Send multiple copies if count > 1
+        for i in range(count):
+            # Modify subject and message for multiple copies
+            current_subject = f"{subject} (#{i+1}/{count})" if count > 1 else subject
+            current_message = f"{message} [Copy {i+1} of {count}]" if count > 1 else message
+            
+            # Use the send_notification function with test metadata
+            message_id = send_notification(
+                user_id=user_id,
+                email_to=email_to,
+                subject=current_subject,
+                message=current_message,
+                sender=sender,
+                event_type=event_type,
+                metadata={
+                    "source": "test-script", 
+                    "test": True, 
+                    "copy_number": i + 1,
+                    "total_copies": count
+                },
+                project_id=project_id,
+                topic_name=topic_name,
+                logger=logger
+            )
+            message_ids.append(message_id)
+            
+            if count > 1:
+                print(f"✅ Test message {i+1}/{count} sent! Message ID: {message_id}")
+        
+        if count == 1:
+            print(f"✅ Test message sent successfully!")
+            print(f"   Message ID: {message_ids[0]}")
+        else:
+            print(f"✅ All {count} test messages sent successfully!")
+            print(f"   Message IDs: {', '.join(message_ids)}")
+            
         if user_id:
             if isinstance(user_id, list):
                 print(f"   Users: {', '.join(user_id)} ({len(user_id)} total)")
@@ -73,8 +97,10 @@ def send_test_message(project_id: str, topic_name: str, user_id = None, email_to
             print(f"   Email: {email_to}")
         print(f"   Subject: {subject}")
         print(f"   Topic: {topic_name}")
+        if count > 1:
+            print(f"   Count: {count} copies (for aggregation testing)")
         
-        return message_id
+        return message_ids if count > 1 else message_ids[0]
         
     except Exception as e:
         print(f"❌ Failed to send test message: {e}")
@@ -107,6 +133,10 @@ def main():
     parser.add_argument('--sender', 
                        default='no-reply@arxiv.org',
                        help='Sender email address (default: no-reply@arxiv.org)')
+    parser.add_argument('--count', 
+                       type=int,
+                       default=1,
+                       help='Number of copies to send for testing aggregation (default: 1)')
     
     args = parser.parse_args()
     
@@ -132,7 +162,8 @@ def main():
             subject=args.subject,
             message=args.message,
             event_type=args.event_type,
-            sender=args.sender
+            sender=args.sender,
+            count=args.count
         )
     except Exception as e:
         sys.exit(1)

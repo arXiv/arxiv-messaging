@@ -540,6 +540,46 @@ class EventStore:
             logger.error("Failed to get undelivered events", error=str(e))
             return {}
 
+    def get_events_for_user(self, user_id: str) -> List[Event]:
+        """Get undelivered events for a specific user from Firestore"""
+        try:
+            logger.debug("Getting events for user", user_id=user_id)
+            
+            # Query undelivered events for the user
+            events_ref = self.db.collection('events')
+            query = events_ref.where('user_id', '==', user_id).where('delivered', '==', False)
+            
+            events = []
+            docs = query.stream()
+            
+            for doc in docs:
+                event_data = doc.to_dict()
+                
+                # Convert timestamp
+                timestamp = event_data.get('timestamp')
+                if hasattr(timestamp, 'timestamp'):
+                    event_data['timestamp'] = datetime.fromtimestamp(timestamp.timestamp())
+                
+                # Create Event object
+                event = Event(
+                    event_id=event_data['event_id'],
+                    user_id=event_data['user_id'],
+                    event_type=EventType(event_data['event_type']),
+                    message=event_data['message'],
+                    sender=event_data['sender'],
+                    subject=event_data['subject'],
+                    timestamp=event_data['timestamp'],
+                    metadata=event_data.get('metadata', {})
+                )
+                events.append(event)
+            
+            logger.debug("Retrieved events for user", user_id=user_id, event_count=len(events))
+            return events
+            
+        except Exception as e:
+            logger.error("Failed to get events for user", user_id=user_id, error=str(e))
+            return []
+
     def get_undelivered_events_by_user(self, user_id: str) -> List[Event]:
         """Get undelivered events for a specific user"""
         return self.get_events_for_user(user_id)
@@ -1254,15 +1294,25 @@ class PubSubEventProcessor:
                         correlation_id=correlation_id)
             raise Exception(f"Delivery failed for user {user_id} subscriptions: {failed_subscriptions}")
         
-        # If all immediate delivery subscriptions succeeded, purge the event data
+        # Only purge events if user has ONLY immediate subscriptions (no aggregated ones)
         immediate_subscriptions = [sub for sub in user_subscriptions if sub.aggregation_frequency == AggregationFrequency.IMMEDIATE]
-        if immediate_subscriptions and all(sub.subscription_id in successful_subscriptions for sub in immediate_subscriptions):
+        aggregated_subscriptions = [sub for sub in user_subscriptions if sub.aggregation_frequency != AggregationFrequency.IMMEDIATE]
+        
+        # Only clear events if:
+        # 1. User has immediate subscriptions that all succeeded, AND
+        # 2. User has NO aggregated subscriptions (otherwise keep for aggregation)
+        if (immediate_subscriptions and 
+            all(sub.subscription_id in successful_subscriptions for sub in immediate_subscriptions) and
+            not aggregated_subscriptions):
             try:
                 # Clear this specific event since it was successfully delivered immediately
+                # and user has no aggregated subscriptions
                 self.event_store.clear_user_events(user_id, event.timestamp + timedelta(seconds=1))
-                logger.info("Event data purged after successful immediate delivery",
+                logger.info("Event data purged after successful immediate delivery (user has no aggregated subscriptions)",
                            user_id=user_id,
                            event_id=event.event_id,
+                           immediate_subs=len(immediate_subscriptions),
+                           aggregated_subs=len(aggregated_subscriptions),
                            correlation_id=correlation_id)
             except Exception as e:
                 logger.warning("Failed to purge event data after delivery - event may be reprocessed",

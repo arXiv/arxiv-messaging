@@ -18,17 +18,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Poetry configuration files and shared library
-COPY messaging-service/pyproject.toml messaging-service/poetry.lock* ./
-COPY arxiv_messaging/ ./arxiv_messaging/
+COPY ./pyproject.toml ./poetry.lock* ./
 
 # Install dependencies using Poetry
 RUN poetry config virtualenvs.create false \
-    && poetry install --only=main \
+    && poetry install  \
     && rm -rf $POETRY_CACHE_DIR
 
 # Copy application code
-COPY messaging-service/src/ ./src/
-COPY messaging-service/main.py .
+COPY ./src/ ./src/
+COPY ./main.py .
 
 # Expose port
 EXPOSE 8080
