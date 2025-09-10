@@ -69,7 +69,7 @@ class EmailDeliveryProvider(DeliveryProvider):
         self.smtp_user = os.environ.get('SMTP_USER', 'smtp-relay@arxiv.org')
         self.smtp_pass = os.environ.get('SMTP_PASSWORD', '')
         self.use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
-        self.default_sender = os.environ.get('DEFAULT_EMAIL_SENDER', 'arxiv-messaging@arxiv.org')
+        self.default_sender = os.environ.get('DEFAULT_EMAIL_SENDER', 'no-reply@arxiv.org')
 
     def send(self, user_preference: UserPreference, content: str, subject: str = None, sender: str = None, correlation_id: str = None) -> bool:
         """Send email using SMTP"""
@@ -261,6 +261,8 @@ class EventStore:
             event_dict['timestamp'] = event.timestamp
             # Convert EventType enum to string for Firestore storage
             event_dict['event_type'] = event.event_type.value
+            # Set delivered field to False for new events
+            event_dict['delivered'] = False
             
             # Store in Firestore
             doc_ref = self.db.collection(self.events_collection).document(event.event_id)
@@ -674,8 +676,11 @@ class EventStore:
                                 continue
                             
                             # Create subject and sender for flush message
-                            subject = f"Undelivered Messages Summary for {current_user_id}"
-                            sender = "arxiv-messaging-flush@arxiv.org"
+                            if subscription.aggregated_message_subject:
+                                subject = subscription.aggregated_message_subject
+                            else:
+                                subject = f"Undelivered Messages Summary for {current_user_id}"
+                            sender = events[0].sender if events else None
                             
                             # Attempt delivery
                             correlation_id = f"flush-{current_user_id}-{int(datetime.now().timestamp())}"
@@ -721,14 +726,46 @@ class EventStore:
                                        subscription_id=subscription.subscription_id,
                                        error=str(e))
                     
-                    # Clear events after successful delivery (or if force_delivery is True)
-                    if flush_results['messages_delivered'] > 0 or force_delivery:
+                    # Only clear events if ALL deliveries succeeded OR force_delivery is True
+                    # For retry strategy, keep failed messages for retry attempts
+                    should_clear_events = False
+                    
+                    if force_delivery:
+                        # Force clear regardless of delivery success
+                        should_clear_events = True
+                        logger.info("Force clearing events due to force_delivery flag", user_id=current_user_id)
+                    elif flush_results['messages_failed'] == 0 and flush_results['messages_delivered'] > 0:
+                        # Only clear if ALL deliveries succeeded (no failures)
+                        should_clear_events = True
+                        logger.info("Clearing events after all deliveries succeeded", 
+                                   user_id=current_user_id,
+                                   delivered=flush_results['messages_delivered'])
+                    elif flush_results['messages_failed'] > 0:
+                        # Don't clear if any deliveries failed - keep for retry
+                        retry_subscriptions = [sub for sub in subscriptions 
+                                             if sub.delivery_error_strategy == DeliveryErrorStrategy.RETRY]
+                        if retry_subscriptions:
+                            logger.info("Keeping events for retry due to failed deliveries",
+                                       user_id=current_user_id,
+                                       failed=flush_results['messages_failed'],
+                                       retry_subs=len(retry_subscriptions))
+                        else:
+                            # If no retry subscriptions, can clear the events
+                            should_clear_events = True
+                            logger.info("Clearing events despite failures (no retry subscriptions)", 
+                                       user_id=current_user_id)
+                    
+                    if should_clear_events:
                         # Clear all events for this user 
                         self.clear_user_events(current_user_id, datetime.now())
                         flush_results['events_cleared'] += len(events)
                         logger.info("Cleared undelivered events after flush",
                                    user_id=current_user_id,
                                    events_cleared=len(events))
+                    else:
+                        logger.info("Events retained for retry attempts",
+                                   user_id=current_user_id,
+                                   events_retained=len(events))
                         
                 except Exception as e:
                     error_msg = f"Error processing user {current_user_id}: {str(e)}"
@@ -1297,6 +1334,19 @@ class PubSubEventProcessor:
         # Only purge events if user has ONLY immediate subscriptions (no aggregated ones)
         immediate_subscriptions = [sub for sub in user_subscriptions if sub.aggregation_frequency == AggregationFrequency.IMMEDIATE]
         aggregated_subscriptions = [sub for sub in user_subscriptions if sub.aggregation_frequency != AggregationFrequency.IMMEDIATE]
+        
+        # DEBUG: Log subscription analysis
+        logger.info("Analyzing subscriptions for purge decision",
+                   user_id=user_id,
+                   total_subscriptions=len(user_subscriptions),
+                   immediate_count=len(immediate_subscriptions),
+                   aggregated_count=len(aggregated_subscriptions),
+                   immediate_subs=[sub.subscription_id for sub in immediate_subscriptions],
+                   aggregated_subs=[sub.subscription_id for sub in aggregated_subscriptions],
+                   immediate_frequencies=[sub.aggregation_frequency.value for sub in immediate_subscriptions],
+                   aggregated_frequencies=[sub.aggregation_frequency.value for sub in aggregated_subscriptions],
+                   successful_subscriptions=list(successful_subscriptions),
+                   correlation_id=correlation_id)
         
         # Only clear events if:
         # 1. User has immediate subscriptions that all succeeded, AND

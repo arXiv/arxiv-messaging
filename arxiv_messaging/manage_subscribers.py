@@ -9,7 +9,7 @@ import sys
 import json
 from datetime import datetime
 import structlog
-from .firebase_loader import FirebaseLoader
+from arxiv_messaging.firebase_loader import FirebaseLoader
 
 def setup_logging():
     """Configure structured logging"""
@@ -31,6 +31,7 @@ def setup_logging():
     )
 
 def main():
+    import os
     setup_logging()
     logger = structlog.get_logger(__name__)
     

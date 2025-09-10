@@ -103,9 +103,9 @@ deploy: build-push ## Build, push and deploy to Cloud Run
 		--memory 512Mi \
 		--cpu 1 \
 		--min-instances 1 \
-		--max-instances 10 \
+		--max-instances 1 \
 		--concurrency 1 \
-		--ingress all \
+		--ingress internal \
 		--vpc-connector projects/$(PROJECT_ID)/locations/$(REGION)/connectors/clourrunconnector \
 		--vpc-egress all-traffic
 	@echo "✅ Deployment complete!"
