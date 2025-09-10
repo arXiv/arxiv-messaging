@@ -1116,7 +1116,7 @@ class PubSubEventProcessor:
                 logger.info("Processing email gateway message",
                            email_to=email_to,
                            subject=data.get('subject', ''),
-                           sender=data.get('sender', ''),
+                           sender=data.get('sender'),
                            event_id=event_id,
                            correlation_id=correlation_id)
                 
@@ -1136,7 +1136,7 @@ class PubSubEventProcessor:
                     temp_preference, 
                     data.get('message', ''), 
                     data.get('subject', ''), 
-                    data.get('sender', 'no-reply@arxiv.org'),
+                    sender=data.get('sender'),
                     correlation_id=correlation_id
                 )
                 
