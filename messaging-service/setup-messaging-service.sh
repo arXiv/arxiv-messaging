@@ -35,9 +35,10 @@ if gcloud firestore databases describe --database="$DATABASE_ID" >/dev/null 2>&1
     echo "Firestore database already exists - skipping..."
 else
     gcloud firestore databases create \
+        --database=$DATABASE_ID \
         --location=$REGION \
         --type=firestore-native \
-        --project=$PROJECT_ID && echo "Firestore database created successfully"
+        --project=$PROJECT_ID && echo "Firestore database '$DATABASE_ID' created successfully"
 fi
 
 # Create Pub/Sub topic and subscription (matches your deployment)

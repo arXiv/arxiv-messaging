@@ -31,7 +31,7 @@ def setup_logging():
     )
 
 def main():
-    import os
+    import os, sys
     setup_logging()
     logger = structlog.get_logger(__name__)
     
