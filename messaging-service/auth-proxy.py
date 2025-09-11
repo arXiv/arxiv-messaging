@@ -225,7 +225,7 @@ def main():
     parser = argparse.ArgumentParser(description='Authenticated proxy for Cloud Run services')
     parser.add_argument('--project-id', 
                        default=os.getenv('GCP_PROJECT_ID', 'arxiv-development'),
-                       help='GCP project ID (default: arxiv-development)')
+                       help='GCP project ID (default: from GCP_PROJECT_ID env var or arxiv-development)')
     parser.add_argument('--service-name',
                        default='messaging-handler',
                        help='Cloud Run service name (default: messaging-handler)')

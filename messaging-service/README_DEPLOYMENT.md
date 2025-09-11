@@ -1,13 +1,15 @@
 # arXiv Messaging Service - Cloud Run Deployment
 
-This service processes Pub/Sub messages and manages event aggregation with email and Slack delivery (currently stubs).
+This service processes Pub/Sub messages and manages event aggregation with email (SMTP) and Slack (webhook) delivery. It also provides a FastAPI REST API for message management.
 
 ## Architecture
 
-- **Cloud Run**: Long-running service that listens to Pub/Sub messages
-- **Firestore**: Stores events and user preferences
+- **Cloud Run**: Long-running service with combined API server and Pub/Sub processor
+- **FastAPI**: REST API for message management and subscription handling
+- **Firestore**: Stores events and user subscriptions (replaces user preferences)
 - **Pub/Sub**: Message queue for incoming events
-- **Scheduler**: Background thread for daily/weekly aggregations
+- **SMTP**: Real email delivery via smtp-relay.gmail.com
+- **Slack**: Real webhook delivery to Slack workflows
 
 ## Prerequisites
 
@@ -31,32 +33,46 @@ This service processes Pub/Sub messages and manages event aggregation with email
 
 4. Create Pub/Sub topic and subscription:
    ```bash
-   gcloud pubsub topics create events
-   gcloud pubsub subscriptions create event-subscription --topic=events
+   gcloud pubsub topics create notification-events
+   gcloud pubsub subscriptions create notification-events-subscription --topic=notification-events
    ```
 
 ## Deployment
 
-1. Update configuration in `deploy.sh`:
-   ```bash
-   PROJECT_ID="your-actual-project-id"
-   ```
+### Multi-Environment Support
 
-2. Build and deploy:
-   ```bash
-   ./deploy.sh
-   ```
+```bash
+# Deploy to specific environments
+export GCP_PROJECT_ID=arxiv-development  # or arxiv-stage, arxiv-production
+make deploy
+
+# Or use convenience targets
+make deploy-dev      # Deploy to arxiv-development
+make deploy-staging  # Deploy to arxiv-stage
+make deploy-prod     # Deploy to arxiv-production
+```
+
+### Setup Prerequisites
+
+```bash
+# Run setup script for your environment
+export GCP_PROJECT_ID=your-target-project
+./setup-firebase.sh
+```
 
 ## Environment Variables
 
-- `GCP_PROJECT_ID`: Your GCP project ID
-- `PUBSUB_SUBSCRIPTION_NAME`: Pub/Sub subscription name (default: event-subscription)
+**Core Configuration:**
+- `GCP_PROJECT_ID`: Target GCP project (arxiv-development, arxiv-stage, arxiv-production)
+- `PUBSUB_SUBSCRIPTION_NAME`: Pub/Sub subscription name (default: notification-events-subscription)
+- `FIRESTORE_DATABASE_ID`: Firestore database ID (default: messaging)
+- `SERVICE_MODE`: Service mode (combined, api-only, pubsub-only)
 
-### Email Configuration (Optional):
+**SMTP Configuration (Production):**
 - `SMTP_SERVER`: SMTP server hostname (default: smtp-relay.gmail.com)
 - `SMTP_PORT`: SMTP server port (default: 465)
 - `SMTP_USER`: SMTP username for authentication (default: smtp-relay@arxiv.org)
-- `SMTP_PASSWORD`: SMTP password for authentication (required for actual email sending)
+- `SMTP_PASSWORD`: SMTP password from Google Secret Manager (secret: smtp-relay-arxiv-org-app-password)
 - `SMTP_USE_SSL`: Whether to use SSL/TLS (default: true)
 - `DEFAULT_EMAIL_SENDER`: Default sender email address (default: arxiv-messaging@arxiv.org)
 
@@ -78,34 +94,38 @@ Send messages to the Pub/Sub topic with this JSON format:
 }
 ```
 
-## User Preferences
+## User Subscriptions
 
-Add user preferences via Firestore console or programmatically:
+Manage user subscriptions via REST API or Firestore console:
 
-**Email User:**
-```json
-{
-  "user_id": "user123",
-  "delivery_method": "email",
-  "aggregation_frequency": "daily",
-  "aggregation_method": "HTML",
-  "delivery_time": "09:00",
-  "timezone": "UTC",
-  "email_address": "user@example.com"
-}
+**Email Subscription (via API):**
+```bash
+curl -X POST "http://localhost:8080/users/user123/subscriptions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "delivery_method": "email",
+    "aggregation_frequency": "daily",
+    "aggregation_method": "HTML",
+    "delivery_time": "09:00",
+    "timezone": "UTC",
+    "email_address": "user@example.com",
+    "delivery_error_strategy": "retry",
+    "aggregated_message_subject": "Daily arXiv Updates"
+  }'
 ```
 
-**Slack User:**
-```json
-{
-  "user_id": "user456", 
-  "delivery_method": "slack",
-  "aggregation_frequency": "immediate",
-  "aggregation_method": "plain",
-  "timezone": "UTC",
-  "slack_channel": "#notifications",
-  "slack_webhook_url": "https://hooks.slack.com/triggers/YOUR_WORKSPACE/TRIGGER_ID/SECRET"
-}
+**Slack Subscription (via API):**
+```bash
+curl -X POST "http://localhost:8080/users/user456/subscriptions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "delivery_method": "slack",
+    "aggregation_frequency": "immediate", 
+    "aggregation_method": "plain",
+    "timezone": "UTC",
+    "slack_webhook_url": "https://hooks.slack.com/triggers/YOUR_WORKSPACE/TRIGGER_ID/SECRET",
+    "delivery_error_strategy": "ignore"
+  }'
 ```
 
 ## Aggregation Frequencies
@@ -120,8 +140,8 @@ Add user preferences via Firestore console or programmatically:
 Each user preference can specify how messages should be formatted:
 
 - **`"plain"`**: Simple text format (default)
-- **`"HTML"`**: Rich HTML table format with styling
-- **`"MIME"`**: MIME multipart format with separate attachments per event type
+- **`"html"`**: Rich HTML table format with styling
+- **`"mime"`**: MIME multipart format with separate attachments per event type
 
 ### Recommended combinations:
 - **Email + HTML**: Professional tables for email clients
@@ -164,15 +184,57 @@ Each user preference can specify how messages should be formatted:
         YOUR_WEBHOOK_URL
    ```
 
+## API Access
+
+### Local Development with Authenticated Proxy
+
+```bash
+# Start authenticated proxy
+make proxy
+
+# Access API endpoints
+curl http://localhost:8080/health
+curl http://localhost:8080/docs  # Interactive API documentation
+curl http://localhost:8080/users  # List users with message counts
+```
+
+### Production API Access
+
+```bash
+# Get identity token
+TOKEN=$(gcloud auth print-identity-token)
+SERVICE_URL=$(gcloud run services describe messaging-handler --region=us-central1 --format='value(status.url)')
+
+# Make authenticated requests
+curl -H "Authorization: Bearer $TOKEN" "$SERVICE_URL/health"
+```
+
 ## Monitoring
 
-- Cloud Run logs: `gcloud logs tail --follow "resource.type=cloud_run_revision"`
-- Firestore collections: `events`, `user_preferences`
-- Pub/Sub subscription monitoring in GCP Console
+- **Cloud Run logs**: `gcloud logs tail --follow "resource.type=cloud_run_revision"`
+- **Firestore collections**: `events`, `subscriptions` (replaces user_preferences)
+- **Pub/Sub subscription monitoring**: GCP Console
+- **API health check**: `/health` endpoint
+- **Structured JSON logging** with correlation IDs
 
-## Scaling
+## Scaling & Performance
 
 The service is configured with:
-- Min instances: 1 (always running for scheduler)
-- Max instances: 10
-- Concurrency: 1 (one message at a time per instance)
+- **Min instances**: 1 (always running for continuous processing)
+- **Max instances**: 1 (current production setting)
+- **Concurrency**: 1 (one request at a time per instance)
+- **Memory**: 512Mi
+- **CPU**: 1 vCPU
+- **Pub/Sub flow control**: Max 100 concurrent messages
+
+## New Features
+
+- ✅ **Real SMTP email delivery** (not stubs)
+- ✅ **Real Slack webhook delivery** (not stubs) 
+- ✅ **FastAPI REST API** for management
+- ✅ **Multi-environment support** (dev/stage/prod)
+- ✅ **Subscription management** (replaces user preferences)
+- ✅ **Custom aggregated subjects** per subscription
+- ✅ **Delivery error strategies** (retry/ignore)
+- ✅ **Authenticated proxy** for local development
+- ✅ **Message flushing API** for undelivered messages

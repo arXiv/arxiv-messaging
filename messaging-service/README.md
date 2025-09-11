@@ -11,6 +11,9 @@ The recommended way to interact with the messaging service is through its REST A
 For local development and testing, use the authenticated proxy to easily access the API:
 
 ```bash
+# Set your target environment (optional, defaults to development)
+export GCP_PROJECT_ID=arxiv-development  # or arxiv-stage, arxiv-production
+
 # Start the authenticated proxy (auto-embeds tokens)
 make proxy
 
@@ -178,7 +181,11 @@ The service can run in three modes via the `SERVICE_MODE` environment variable:
 
 **Required:**
 ```bash
-GCP_PROJECT_ID=arxiv-development
+# Target GCP Project (choose one)
+GCP_PROJECT_ID=arxiv-development  # Development
+GCP_PROJECT_ID=arxiv-stage        # Staging 
+GCP_PROJECT_ID=arxiv-production   # Production
+
 PUBSUB_SUBSCRIPTION_NAME=notification-events-subscription
 FIRESTORE_DATABASE_ID=messaging
 ```
@@ -201,15 +208,42 @@ SERVICE_MODE=combined  # combined|api-only|pubsub-only
 ### Docker Deployment
 
 ```bash
-# Build and deploy to Cloud Run
+# Deploy to specific environments
+make deploy-dev      # Deploy to arxiv-development
+make deploy-staging  # Deploy to arxiv-stage  
+make deploy-prod     # Deploy to arxiv-production
+
+# Or set environment variable and deploy
+export GCP_PROJECT_ID=arxiv-production
 make deploy
 
-# Run locally for development
-make run
-
-# Start authenticated proxy
-make proxy
+# Local development
+make run             # Run locally
+make proxy           # Start authenticated proxy
 ```
+
+### Multi-Environment Setup
+
+The service supports deployment to multiple GCP projects:
+
+```bash
+# Configure for different environments
+export GCP_PROJECT_ID=arxiv-development  # Development
+export GCP_PROJECT_ID=arxiv-stage        # Staging
+export GCP_PROJECT_ID=arxiv-production   # Production
+
+# Deploy to specific environment
+make deploy-prod    # Deploys to arxiv-production
+make deploy-dev     # Deploys to arxiv-development
+```
+
+**Environment Setup Checklist:**
+- ✅ GCP project exists with billing enabled
+- ✅ Required APIs enabled (Cloud Run, Firestore, Pub/Sub, Secret Manager)
+- ✅ VPC connector `clourrunconnector` exists in target region
+- ✅ Secret `smtp-relay-arxiv-org-app-password` configured
+- ✅ Firestore database `messaging` created
+- ✅ Pub/Sub subscription `notification-events-subscription` exists
 
 ### Authentication
 
@@ -218,7 +252,7 @@ The Cloud Run service requires Google Cloud authentication:
 ```bash
 # For local development
 gcloud auth login
-gcloud config set project arxiv-development
+gcloud config set project $GCP_PROJECT_ID
 
 # For production, use service account with:
 # - Cloud Run Invoker role

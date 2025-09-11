@@ -6,8 +6,8 @@
 # Don't exit on errors - handle them gracefully
 # set -e
 
-# Configuration (matches your deploy.sh)
-PROJECT_ID="arxiv-development"
+# Configuration (uses environment variables with fallbacks)
+PROJECT_ID="${GCP_PROJECT_ID:-arxiv-development}"
 REGION="us-central1"
 DATABASE_ID="(default)"  # Use default database or specify custom name
 

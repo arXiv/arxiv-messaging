@@ -38,7 +38,7 @@ def main():
     parser = argparse.ArgumentParser(description='Manage subscribers in Firebase')
     parser.add_argument('--project-id', 
                        default=os.getenv('GCP_PROJECT_ID', 'arxiv-development'),
-                       help='GCP project ID (default: arxiv-development)')
+                       help='GCP project ID (default: from GCP_PROJECT_ID env var or arxiv-development)')
     parser.add_argument('--yaml-file', 
                        default='subscribers.yaml',
                        help='YAML file with subscribers (default: subscribers.yaml)')

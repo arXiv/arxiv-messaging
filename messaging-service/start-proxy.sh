@@ -3,7 +3,7 @@
 
 set -e
 
-# Default values
+# Default values (use environment variables with fallbacks)
 PROJECT_ID=${GCP_PROJECT_ID:-arxiv-development}
 SERVICE_NAME=${SERVICE_NAME:-messaging-handler}
 REGION=${REGION:-us-central1}

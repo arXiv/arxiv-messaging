@@ -1,7 +1,7 @@
 # Makefile for arXiv Messaging Service
 
 # Configuration
-PROJECT_ID = arxiv-development
+PROJECT_ID ?= $(shell echo $${GCP_PROJECT_ID:-arxiv-development})
 SERVICE_NAME = messaging-handler
 REGION = us-central1
 IMAGE_TAG = gcr.io/$(PROJECT_ID)/$(SERVICE_NAME):latest
@@ -34,6 +34,16 @@ ENV_VARS = -e GCP_PROJECT_ID=$(PROJECT_ID) \
 .PHONY: help build push build-push run stop clean logs shell test deploy proxy test-auth remove-public-access grant-access status-service get-auth-url
 
 help: ## Show this help message
+	@echo "arXiv Messaging Service - Build & Deploy"
+	@echo "========================================"
+	@echo "Current Configuration:"
+	@echo "  Project: $(PROJECT_ID)"
+	@echo "  Region:  $(REGION)"
+	@echo "  Service: $(SERVICE_NAME)"
+	@echo ""
+	@echo "Environment Variables:"
+	@echo "  GCP_PROJECT_ID - Override target project (current: $${GCP_PROJECT_ID:-not set})"
+	@echo ""
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
@@ -190,6 +200,19 @@ get-auth-url: ## Get authenticated URL for web browser access
 	echo "3. Or use gcloud to proxy (if proxy works with your setup):" && \
 	echo "   gcloud run services proxy $(SERVICE_NAME) --region=$(REGION) --port=8080" && \
 	echo "   Then browse to: http://localhost:8080/docs"
+
+# Environment-specific deployment targets
+deploy-dev: ## Deploy to arxiv-development
+	@echo "🚀 Deploying to development environment..."
+	@GCP_PROJECT_ID=arxiv-development $(MAKE) deploy
+
+deploy-staging: ## Deploy to arxiv-stage  
+	@echo "🚀 Deploying to staging environment..."
+	@GCP_PROJECT_ID=arxiv-stage $(MAKE) deploy
+
+deploy-prod: ## Deploy to arxiv-production
+	@echo "🚀 Deploying to production environment..."
+	@GCP_PROJECT_ID=arxiv-production $(MAKE) deploy
 
 # Development shortcuts
 dev: run ## Alias for run
