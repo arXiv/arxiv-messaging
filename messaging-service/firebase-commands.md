@@ -3,7 +3,7 @@
 ## Quick Setup (Automated)
 ```bash
 # Run the setup script
-./setup-firebase.sh
+./setup-messaging-service.sh
 ```
 
 ## Manual Commands

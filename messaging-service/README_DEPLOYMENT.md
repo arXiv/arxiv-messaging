@@ -39,25 +39,86 @@ This service processes Pub/Sub messages and manages event aggregation with email
 
 ## Deployment
 
-### Multi-Environment Support
+### Complete Setup Process
+
+The messaging service includes a comprehensive setup script that creates all required GCP resources:
+
+#### Step 1: Initial Project Setup
 
 ```bash
-# Deploy to specific environments
+# Set your target environment
 export GCP_PROJECT_ID=arxiv-development  # or arxiv-stage, arxiv-production
-make deploy
 
-# Or use convenience targets
+# Run the complete setup script
+./setup-messaging-service.sh
+```
+
+**What the setup script creates:**
+- ✅ **APIs enabled**: Firestore, Cloud Run, Pub/Sub, Secret Manager, VPC Access
+- ✅ **Firestore database** with composite indexes for efficient queries
+- ✅ **Pub/Sub topic** (`notification-events`) and subscription (`notification-events-subscription`)
+- ✅ **Dedicated service account** (`messaging-service@{project}.iam.gserviceaccount.com`)
+- ✅ **IAM permissions** (Firestore User, Pub/Sub Subscriber, Secret Manager Access)
+- ✅ **VPC connector** (`clourrunconnector`) for Cloud Run networking
+- ✅ **SMTP secret placeholder** in Secret Manager
+
+#### Step 2: Configure SMTP Password (Required)
+
+```bash
+# Update the SMTP secret with your real password
+echo 'YOUR_REAL_SMTP_PASSWORD' | gcloud secrets versions add smtp-relay-arxiv-org-app-password --data-file=-
+```
+
+**Note**: The SMTP password should be an **App Password** from your Gmail/Google Workspace account, not your regular password.
+
+#### Step 3: Deploy the Service
+
+```bash
+# Deploy to specific environments using convenience targets
 make deploy-dev      # Deploy to arxiv-development
 make deploy-staging  # Deploy to arxiv-stage
 make deploy-prod     # Deploy to arxiv-production
+
+# Or set environment variable and deploy
+export GCP_PROJECT_ID=your-target-project
+make deploy
 ```
 
-### Setup Prerequisites
+### Multi-Environment Setup
+
+The service supports deployment to multiple environments with a single codebase:
 
 ```bash
-# Run setup script for your environment
-export GCP_PROJECT_ID=your-target-project
-./setup-firebase.sh
+# Development Environment
+export GCP_PROJECT_ID=arxiv-development
+./setup-messaging-service.sh
+make deploy-dev
+
+# Staging Environment  
+export GCP_PROJECT_ID=arxiv-stage
+./setup-messaging-service.sh
+make deploy-staging
+
+# Production Environment
+export GCP_PROJECT_ID=arxiv-production
+./setup-messaging-service.sh
+make deploy-prod
+```
+
+### Verification Steps
+
+After deployment, verify the setup:
+
+```bash
+# Check service health
+make proxy                                    # Start authenticated proxy
+curl http://localhost:8080/health            # Should return {"status": "healthy"}
+
+# Check API documentation
+curl http://localhost:8080/docs              # FastAPI interactive docs
+
+# Test Pub/Sub integration
+gcloud pubsub topics publish notification-events --message='{"event_id":"test-1","user_id":"test-user","event_type":"NOTIFICATION","message":"Test message","sender":"no-reply@arxiv.org","subject":"Test Subject","timestamp":"2025-09-10T10:00:00Z","metadata":{}}'
 ```
 
 ## Environment Variables

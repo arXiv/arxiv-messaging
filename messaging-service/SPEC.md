@@ -230,7 +230,7 @@ Configured via environment variables or Cloud Secret Manager:
 ### Deployment Steps
 ```bash
 # 1. Set up Firebase/Firestore infrastructure
-./setup-firebase.sh
+./setup-messaging-service.sh
 
 # 2. Build and push Docker image
 ./build-docker.sh

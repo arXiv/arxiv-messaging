@@ -104,10 +104,12 @@ test: ## Test the running service
 
 deploy: build-push ## Build, push and deploy to Cloud Run
 	@echo "🔧 Deploying to Cloud Run with SMTP mode: $(SMTP_MODE_NAME) (port $(SMTP_PORT), SSL: $(SMTP_USE_SSL))"
+	@echo "📋 Target Project: $(PROJECT_ID)"
 	gcloud run deploy $(SERVICE_NAME) \
 		--image $(IMAGE_TAG) \
 		--platform managed \
 		--region $(REGION) \
+		--service-account messaging-service@$(PROJECT_ID).iam.gserviceaccount.com \
 		--set-env-vars GCP_PROJECT_ID=$(PROJECT_ID),PUBSUB_SUBSCRIPTION_NAME=$(PUBSUB_NAME),FIRESTORE_DATABASE_ID=messaging,SMTP_SERVER=smtp-relay.gmail.com,SMTP_PORT=$(SMTP_PORT),SMTP_USE_SSL=$(SMTP_USE_SSL),SERVICE_MODE=combined \
 		--set-secrets SMTP_PASSWORD=$(SECRET_NAME):latest \
 		--memory 512Mi \
@@ -116,7 +118,7 @@ deploy: build-push ## Build, push and deploy to Cloud Run
 		--max-instances 1 \
 		--concurrency 1 \
 		--ingress all \
-		--vpc-connector projects/$(PROJECT_ID)/locations/$(REGION)/connectors/clourrunconnector \
+		--vpc-connector projects/$(PROJECT_ID)/locations/$(REGION)/connectors/cloudrunconnector \
 		--vpc-egress all-traffic
 	@echo "✅ Deployment complete!"
 	@echo "📧 SMTP Configuration: $(SMTP_MODE_NAME) (port $(SMTP_PORT), SSL: $(SMTP_USE_SSL))"
