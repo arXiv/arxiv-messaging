@@ -29,19 +29,18 @@ class TestEventAggregation:
         assert "Build completed successfully" in result
     
     def test_html_aggregation(self, event_aggregator, sample_events):
-        """Test HTML table aggregation"""
+        """Test HTML section-based aggregation with index"""
         user_events = [event for event in sample_events if event.user_id == "user_123"]
         
         result = event_aggregator.aggregate_events("user_123", user_events, AggregationMethod.HTML)
         
         assert "<!DOCTYPE html>" in result
-        assert "<table>" in result
-        assert "<th>Timestamp</th>" in result
-        assert "<th>Event ID</th>" in result
-        assert "<th>Sender</th>" in result
-        assert "<th>Subject</th>" in result
+        assert "📋 Index" in result  # Index section
+        assert "message-section" in result  # Message sections
+        assert "message-header" in result  # Section headers
         assert "Event Summary for User user_123" in result
         assert "arxiv-system@arxiv.org" in result
+        assert "href='#message-1'" in result  # Index links
         assert "build-system@arxiv.org" in result
     
     def test_mime_aggregation(self, event_aggregator, sample_events):

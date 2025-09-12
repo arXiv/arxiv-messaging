@@ -1081,9 +1081,20 @@ class EventAggregator:
                 "</div>",
                 "<div class='message-content'>",
                 f"{html.escape(event.message)}",
-                "</div>",
                 "</div>"
             ])
+            
+            # Add metadata if present
+            if event.metadata:
+                html_parts.extend([
+                    "<div class='message-meta' style='margin-top: 10px;'>",
+                    f"<strong>Metadata:</strong> {html.escape(str(event.metadata))}",
+                    "</div>"
+                ])
+                
+            # Close the message section
+            html_parts.append("</div>")
+            
         
         html_parts.extend([
             "</body></html>"
