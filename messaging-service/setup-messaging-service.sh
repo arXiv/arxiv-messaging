@@ -163,7 +163,7 @@ fi
 
 # Set up VPC connector (using existing default network and cloudrunsubnet)
 echo "Configuring VPC connector..."
-VPC_CONNECTOR_NAME="cloudrunconnector"
+VPC_CONNECTOR_NAME="clourrunconnector"
 
 if gcloud compute networks vpc-access connectors describe $VPC_CONNECTOR_NAME \
     --region=$REGION >/dev/null 2>&1; then

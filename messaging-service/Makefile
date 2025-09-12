@@ -118,7 +118,7 @@ deploy: build-push ## Build, push and deploy to Cloud Run
 		--max-instances 1 \
 		--concurrency 1 \
 		--ingress all \
-		--vpc-connector projects/$(PROJECT_ID)/locations/$(REGION)/connectors/cloudrunconnector \
+		--vpc-connector projects/$(PROJECT_ID)/locations/$(REGION)/connectors/clourrunconnector \
 		--vpc-egress all-traffic
 	@echo "✅ Deployment complete!"
 	@echo "📧 SMTP Configuration: $(SMTP_MODE_NAME) (port $(SMTP_PORT), SSL: $(SMTP_USE_SSL))"
