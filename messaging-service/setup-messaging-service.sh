@@ -120,14 +120,24 @@ else
     echo "Firestore IAM binding may already exist - continuing..."
 fi
 
-# Grant Pub/Sub access
-echo "Setting up Pub/Sub IAM permissions..."
+# Grant Pub/Sub access (subscriber for receiving messages)
+echo "Setting up Pub/Sub subscriber IAM permissions..."
 if gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT" \
     --role="roles/pubsub.subscriber" >/dev/null 2>&1; then
-    echo "Pub/Sub IAM binding added successfully"
+    echo "Pub/Sub subscriber IAM binding added successfully"
 else
-    echo "Pub/Sub IAM binding may already exist - continuing..."
+    echo "Pub/Sub subscriber IAM binding may already exist - continuing..."
+fi
+
+# Grant Pub/Sub publisher access (for message publishing)
+echo "Setting up Pub/Sub publisher IAM permissions..."
+if gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SERVICE_ACCOUNT" \
+    --role="roles/pubsub.publisher" >/dev/null 2>&1; then
+    echo "Pub/Sub publisher IAM binding added successfully"
+else
+    echo "Pub/Sub publisher IAM binding may already exist - continuing..."
 fi
 
 # Grant Secret Manager access
@@ -207,7 +217,7 @@ echo "- ✅ Pub/Sub topic: $TOPIC_NAME"
 echo "- ✅ Pub/Sub subscription: $SUBSCRIPTION_NAME (600s ack, 7d retention)"
 echo "- ✅ Firestore composite indexes for efficient queries"
 echo "- ✅ Dedicated service account: $SERVICE_ACCOUNT"
-echo "- ✅ IAM permissions (Firestore, Pub/Sub, Secret Manager, Service Account User)"
+echo "- ✅ IAM permissions (Firestore, Pub/Sub Subscriber/Publisher, Secret Manager, Service Account User)"
 echo "- ✅ VPC connector: $VPC_CONNECTOR_NAME (using existing connector)"
 echo "- ✅ SMTP secret: $SECRET_NAME (exists with real password, service account has access)"
 echo ""

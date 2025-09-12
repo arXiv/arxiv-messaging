@@ -58,6 +58,10 @@ def send_email(
             msg['To'] = recipient
             
             html_part = MIMEText(body, 'html', 'utf-8')
+            # Override default base64 encoding with quoted-printable
+            html_part.set_param('charset', 'utf-8')
+            del html_part['Content-Transfer-Encoding']
+            html_part['Content-Transfer-Encoding'] = 'quoted-printable'
             msg.attach(html_part)
             content_type = "HTML"
             
@@ -72,7 +76,12 @@ def send_email(
             msg['From'] = sender
             msg['To'] = recipient
             msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+            plain_part = MIMEText(body, 'plain', 'utf-8')
+            # Override default base64 encoding with quoted-printable  
+            plain_part.set_param('charset', 'utf-8')
+            del plain_part['Content-Transfer-Encoding']
+            plain_part['Content-Transfer-Encoding'] = 'quoted-printable'
+            msg.attach(plain_part)
             content_type = "plain text"
         
         logger.info("Attempting to send email",

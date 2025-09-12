@@ -679,8 +679,9 @@ class EventStore:
                                 continue
                             
                             # Create subject and sender for flush message
-                            if subscription.aggregated_message_subject:
-                                subject = subscription.aggregated_message_subject
+                            aggregated_subject = getattr(subscription, 'aggregated_message_subject', None)
+                            if aggregated_subject:
+                                subject = aggregated_subject
                             else:
                                 subject = f"Undelivered Messages Summary for {current_user_id}"
                             sender = events[0].sender if events else None
@@ -1015,30 +1016,28 @@ class EventAggregator:
         return msg.as_string()
     
     def _aggregate_html(self, user_id: str, events: List[Event]) -> str:
-        """Aggregate events into HTML table format"""
-        # Group events by type
-        events_by_type = {}
-        for event in events:
-            if event.event_type not in events_by_type:
-                events_by_type[event.event_type] = []
-            events_by_type[event.event_type].append(event)
-        
+        """Aggregate events into HTML format with index and sections"""        
         # Build HTML
         html_parts = [
             "<!DOCTYPE html>",
             "<html><head>",
             "<title>Event Summary</title>",
             "<style>",
-            "body { font-family: Arial, sans-serif; margin: 20px; }",
+            "body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }",
             "h1 { color: #333; border-bottom: 2px solid #ddd; }",
-            "h2 { color: #666; margin-top: 30px; }",
+            "h2 { color: #666; margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }",
             ".summary { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }",
-            "table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }",
-            "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }",
-            "th { background-color: #f2f2f2; font-weight: bold; }",
-            "tr:nth-child(even) { background-color: #f9f9f9; }",
+            ".index { background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 30px; border-left: 4px solid #007cba; }",
+            ".index h3 { margin-top: 0; color: #007cba; }",
+            ".index ul { margin: 10px 0; }",
+            ".index li { margin-bottom: 5px; }",
+            ".index a { color: #007cba; text-decoration: none; }",
+            ".index a:hover { text-decoration: underline; }",
+            ".message-section { margin: 30px 0; padding: 20px; border-left: 4px solid #ddd; background: #fafafa; }",
+            ".message-header { font-size: 1.2em; font-weight: bold; color: #333; margin-bottom: 10px; }",
+            ".message-meta { color: #666; font-size: 0.9em; margin-bottom: 15px; }",
+            ".message-content { background: white; padding: 15px; border-radius: 3px; border: 1px solid #e0e0e0; }",
             ".timestamp { white-space: nowrap; }",
-            ".message { max-width: 300px; word-wrap: break-word; }",
             "</style>",
             "</head><body>",
             f"<h1>Event Summary for User {html.escape(user_id)}</h1>",
@@ -1048,34 +1047,43 @@ class EventAggregator:
             "</div>"
         ]
         
-        # Create table for each event type
-        for event_type, type_events in events_by_type.items():
+        # Create index/table of contents
+        html_parts.extend([
+            "<div class='index'>",
+            "<h3>📋 Index</h3>",
+            "<ul>"
+        ])
+        
+        for i, event in enumerate(events, 1):
+            anchor_id = f"message-{i}"
+            timestamp_str = event.timestamp.strftime('%Y-%m-%d %H:%M')
+            html_parts.append(
+                f"<li><a href='#{anchor_id}'>{i}. {html.escape(event.subject)} "
+                f"<span class='timestamp'>({timestamp_str})</span></a></li>"
+            )
+        
+        html_parts.extend([
+            "</ul>",
+            "</div>"
+        ])
+        
+        # Create individual message sections
+        for i, event in enumerate(events, 1):
+            anchor_id = f"message-{i}"
             html_parts.extend([
-                f"<h2>{html.escape(event_type.value.upper())} Events ({len(type_events)} total)</h2>",
-                "<table>",
-                "<tr>",
-                "<th>Timestamp</th>",
-                "<th>Event ID</th>",
-                "<th>Sender</th>",
-                "<th>Subject</th>",
-                "<th>Message</th>",
-                "<th>Metadata</th>",
-                "</tr>"
+                f"<div class='message-section' id='{anchor_id}'>",
+                f"<div class='message-header'>{i}. {html.escape(event.subject)}</div>",
+                "<div class='message-meta'>",
+                f"<strong>Time:</strong> {html.escape(event.timestamp.strftime('%Y-%m-%d %H:%M:%S'))} | ",
+                f"<strong>From:</strong> {html.escape(event.sender)} | ",
+                f"<strong>Type:</strong> {html.escape(event.event_type.value)} | ",
+                f"<strong>ID:</strong> {html.escape(event.event_id)}",
+                "</div>",
+                "<div class='message-content'>",
+                f"{html.escape(event.message)}",
+                "</div>",
+                "</div>"
             ])
-            
-            for event in type_events:
-                html_parts.extend([
-                    "<tr>",
-                    f"<td class='timestamp'>{html.escape(event.timestamp.strftime('%Y-%m-%d %H:%M:%S'))}</td>",
-                    f"<td>{html.escape(event.event_id)}</td>",
-                    f"<td>{html.escape(event.sender)}</td>",
-                    f"<td>{html.escape(event.subject)}</td>",
-                    f"<td class='message'>{html.escape(event.message)}</td>",
-                    f"<td>{html.escape(str(event.metadata))}</td>",
-                    "</tr>"
-                ])
-            
-            html_parts.append("</table>")
         
         html_parts.extend([
             "</body></html>"
