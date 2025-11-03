@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "ArXiv messaging library for event types and messaging utilities"
 authors = ["ArXiv Team <developers@arxiv.org>"]
 readme = "README.md"
+packages = [{include = "arxiv_messaging", from = "."}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
