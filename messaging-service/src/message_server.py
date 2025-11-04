@@ -218,6 +218,11 @@ class DeliveryService:
             return False
         
         try:
+            logger.debug("content: " + content[:80],
+                         user_id=user_preference.user_id,
+                         subscription_id=getattr(user_preference, 'subscription_id', 'unknown'),
+                         correlation_id=correlation_id)
+
             return provider.send(user_preference, content, subject, sender, correlation_id=correlation_id)
         except Exception as e:
             logger.error("Delivery failed", 

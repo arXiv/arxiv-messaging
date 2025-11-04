@@ -7,6 +7,7 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email import policy
 from typing import Optional, Union
 import structlog
 
@@ -49,38 +50,34 @@ def send_email(
         logger = structlog.get_logger(__name__)
     
     try:
+        # Use email policy that prefers 8bit/quoted-printable encoding over base64
+        # This ensures email body is readable in raw format
+        email_policy = policy.SMTP.clone(cte_type='8bit')
+
         # Determine content type and create appropriate message
         if body.strip().startswith('<!DOCTYPE html>') or body.strip().startswith('<html'):
             # HTML content
-            msg = MIMEMultipart('alternative')
+            msg = MIMEMultipart('alternative', policy=email_policy)
             msg['Subject'] = subject
             msg['From'] = sender
             msg['To'] = recipient
-            
-            html_part = MIMEText(body, 'html', 'utf-8')
-            # Override default base64 encoding with quoted-printable
-            html_part.set_param('charset', 'utf-8')
-            del html_part['Content-Transfer-Encoding']
-            html_part['Content-Transfer-Encoding'] = 'quoted-printable'
+
+            html_part = MIMEText(body, 'html', 'utf-8', policy=email_policy)
             msg.attach(html_part)
             content_type = "HTML"
-            
+
         elif 'Content-Type: multipart/mixed' in body:
             # MIME multipart content - send as raw message
             raw_message = body
             content_type = "MIME"
-            
+
         else:
             # Plain text content
-            msg = MIMEMultipart()
+            msg = MIMEMultipart(policy=email_policy)
             msg['From'] = sender
             msg['To'] = recipient
             msg['Subject'] = subject
-            plain_part = MIMEText(body, 'plain', 'utf-8')
-            # Override default base64 encoding with quoted-printable  
-            plain_part.set_param('charset', 'utf-8')
-            del plain_part['Content-Transfer-Encoding']
-            plain_part['Content-Transfer-Encoding'] = 'quoted-printable'
+            plain_part = MIMEText(body, 'plain', 'utf-8', policy=email_policy)
             msg.attach(plain_part)
             content_type = "plain text"
         

@@ -128,19 +128,19 @@ deploy: build-push ## Build, push and deploy to Cloud Run
 proxy: ## Start authenticated proxy to Cloud Run service on localhost:8080
 	@echo "🔗 Starting authenticated proxy to Cloud Run service..."
 	@echo "📡 This proxy automatically embeds authentication tokens"
-	@echo "🚀 Starting proxy server..."
-	./start-proxy.sh
+	@echo "🚀 Starting proxy server on port $(LOCAL_PORT)..."
+	PORT=$(LOCAL_PORT) ./start-proxy.sh
 
 proxy-basic: ## Start basic gcloud proxy (no auto-auth)
 	@echo "🔗 Starting basic gcloud proxy to Cloud Run service..."
-	@echo "📡 Access endpoints at: http://localhost:8080"
-	@echo "   Health: http://localhost:8080/health"
-	@echo "   Docs: http://localhost:8080/docs" 
-	@echo "   OpenAPI: http://localhost:8080/openapi.json"
+	@echo "📡 Access endpoints at: http://localhost:$(LOCAL_PORT)"
+	@echo "   Health: http://localhost:$(LOCAL_PORT)/health"
+	@echo "   Docs: http://localhost:$(LOCAL_PORT)/docs"
+	@echo "   OpenAPI: http://localhost:$(LOCAL_PORT)/openapi.json"
 	@echo ""
 	@echo "⚠️  Note: This proxy does NOT embed auth tokens automatically"
 	@echo "Press Ctrl+C to stop the proxy"
-	gcloud run services proxy $(SERVICE_NAME) --region=$(REGION) --port=8080
+	gcloud run services proxy $(SERVICE_NAME) --region=$(REGION) --port=$(LOCAL_PORT)
 
 test-auth: ## Test authenticated endpoints with bearer token
 	@echo "🔐 Testing authenticated Cloud Run service..."
@@ -200,8 +200,8 @@ get-auth-url: ## Get authenticated URL for web browser access
 	echo "   curl -H \"Authorization: Bearer \$$TOKEN\" $$SERVICE_URL/docs" && \
 	echo "" && \
 	echo "3. Or use gcloud to proxy (if proxy works with your setup):" && \
-	echo "   gcloud run services proxy $(SERVICE_NAME) --region=$(REGION) --port=8080" && \
-	echo "   Then browse to: http://localhost:8080/docs"
+	echo "   gcloud run services proxy $(SERVICE_NAME) --region=$(REGION) --port=$(LOCAL_PORT)" && \
+	echo "   Then browse to: http://localhost:$(LOCAL_PORT)/docs"
 
 # Environment-specific deployment targets
 deploy-dev: ## Deploy to arxiv-development
