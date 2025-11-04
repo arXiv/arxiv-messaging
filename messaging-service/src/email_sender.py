@@ -7,11 +7,30 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.message import EmailMessage
 from email import policy
 from typing import Optional, Union
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+
+def _can_encode_as_ascii(text: str) -> bool:
+    """Check if text can be encoded as ASCII"""
+    try:
+        text.encode('ascii')
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def _can_encode_as_latin1(text: str) -> bool:
+    """Check if text can be encoded as ISO-8859-1 (Latin-1)"""
+    try:
+        text.encode('iso-8859-1')
+        return True
+    except UnicodeEncodeError:
+        return False
 
 
 def send_email(
@@ -56,7 +75,7 @@ def send_email(
 
         # Determine content type and create appropriate message
         if body.strip().startswith('<!DOCTYPE html>') or body.strip().startswith('<html'):
-            # HTML content
+            # HTML content - always needs MIME
             msg = MIMEMultipart('alternative', policy=email_policy)
             msg['Subject'] = subject
             msg['From'] = sender
@@ -64,22 +83,43 @@ def send_email(
 
             html_part = MIMEText(body, 'html', 'utf-8', policy=email_policy)
             msg.attach(html_part)
-            content_type = "HTML"
+            content_type = "HTML (MIME multipart)"
 
         elif 'Content-Type: multipart/mixed' in body:
             # MIME multipart content - send as raw message
             raw_message = body
-            content_type = "MIME"
+            content_type = "MIME (raw)"
 
         else:
-            # Plain text content
-            msg = MIMEMultipart(policy=email_policy)
-            msg['From'] = sender
-            msg['To'] = recipient
-            msg['Subject'] = subject
-            plain_part = MIMEText(body, 'plain', 'utf-8', policy=email_policy)
-            msg.attach(plain_part)
-            content_type = "plain text"
+            # Plain text content - use simplest format possible
+            # Check if we can use ASCII or ISO-8859-1 for simpler encoding
+            if _can_encode_as_ascii(body) and _can_encode_as_ascii(subject):
+                # Pure ASCII - create simple message without MIME multipart
+                msg = EmailMessage(policy=policy.SMTP)
+                msg['From'] = sender
+                msg['To'] = recipient
+                msg['Subject'] = subject
+                msg.set_content(body, charset='us-ascii')
+                content_type = "plain text (ASCII, 7-bit)"
+
+            elif _can_encode_as_latin1(body) and _can_encode_as_latin1(subject):
+                # ISO-8859-1 compatible - use quoted-printable
+                msg = EmailMessage(policy=policy.SMTP)
+                msg['From'] = sender
+                msg['To'] = recipient
+                msg['Subject'] = subject
+                msg.set_content(body, charset='iso-8859-1', cte='quoted-printable')
+                content_type = "plain text (ISO-8859-1, quoted-printable)"
+
+            else:
+                # Contains characters outside ISO-8859-1 - need UTF-8
+                # Use simple EmailMessage, not MIME multipart
+                msg = EmailMessage(policy=email_policy)
+                msg['From'] = sender
+                msg['To'] = recipient
+                msg['Subject'] = subject
+                msg.set_content(body, charset='utf-8')
+                content_type = "plain text (UTF-8, 8-bit)"
         
         logger.info("Attempting to send email",
                    smtp_server=smtp_server,
